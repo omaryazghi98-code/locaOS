@@ -107,10 +107,10 @@ export class FocusController {
       }
 
       const unresolvedBlockers = Array.from(new Set(pickups.flatMap((pickup) => pickup.blockers)));
-      const overdueTasks = pickups.filter((pickup) => pickup.blockers.length > 0).map((pickup) => `${pickup.customerName}: ${pickup.blockers.join(', ')}`);
+      const overdueTasks = pickups.filter((pickup) => pickup.blockers.length > 0).map((pickup) => ({ reservationId: pickup.reservationId, customerName: pickup.customerName, blockers: pickup.blockers }));
       const contractActions = pickups
         .filter((pickup) => !pickup.contractId)
-        .map((pickup) => ({ id: pickup.reservationId, label: `Préparer le contrat — ${pickup.customerName}`, href: `/brief?scope=morning&reservationId=${pickup.reservationId}` }));
+        .map((pickup) => ({ id: pickup.reservationId, reservationId: pickup.reservationId, customerName: pickup.customerName, href: `/brief?scope=morning&reservationId=${pickup.reservationId}` }));
 
       return {
         pickups,
