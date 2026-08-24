@@ -9,7 +9,7 @@
   "scripts": {
     "build": "pnpm --filter @locaos/domain build && pnpm -r --filter '!@locaos/domain' build",
     "lint": "eslint .",
-    "typecheck": "pnpm -r run typecheck",
+    "typecheck": "pnpm --filter @locaos/domain build && pnpm -r run typecheck",
     "test": "pnpm --filter @locaos/domain test && pnpm --filter @locaos/api test",
     "db:start": "node scripts/db.mjs start",
     "db:stop": "node scripts/db.mjs stop",
