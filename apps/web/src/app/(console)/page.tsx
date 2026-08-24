@@ -60,7 +60,7 @@ export default async function CommandCenter() {
       </div>
 
       <div className="sub" style={{ marginTop: 14 }}>
-        Briefs: <a href="/?scope=brief-matin">matin</a> · <a href="/?scope=brief-soir">fin de journée</a> — détaillés dans « Aujourd'hui ».
+        Brief détaillé: <a href="/brief?scope=morning">matin</a> · <a href="/brief?scope=eod">fin de journée</a>.
       </div>
     </div>
   );

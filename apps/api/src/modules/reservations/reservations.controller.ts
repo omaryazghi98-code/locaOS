@@ -3,6 +3,8 @@ import { and, desc, eq, gte, inArray, lte, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { computeQuote, canTransitionReservation, type ReservationStatus } from '@locaos/domain';
 import { withTenant } from '../../db/client';
+import { ConflictException } from '@nestjs/common';
+import { contracts } from '../../db/schema';
 import { customers, quotes, reservations, vehicleCategories, vehicles } from '../../db/schema';
 import { ZodValidationPipe } from '../common/zod.pipe.js';
 import { AuthGuard, AuthedRequest, PermissionsGuard, RequirePermission } from '../auth/guards.js';
@@ -66,6 +68,17 @@ export class ReservationsController {
         depositAmount: cat[0].defaultDeposit,
       });
 
+      // Scenario C guard: vehicle still under an active/overdue contract at pickup time → fail safely
+      if (body.vehicleId) {
+        const active = await tx.select().from(contracts)
+          .where(and(eq(contracts.vehicleId, body.vehicleId), inArray(contracts.status, ['ACTIVE', 'AMENDED']))).limit(1);
+        const c = active[0];
+        if (c?.periodEnd && new Date(body.pickupAt) < c.periodEnd) {
+          throw new ConflictException({
+            error: { code: 'VEHICLE_STILL_OUT', message: `Véhicule encore loué (contrat ${c.number}) jusqu’au ${c.periodEnd.toISOString()}`, contractId: c.id },
+          });
+        }
+      }
       const ref = `RES-${Date.now().toString(36).toUpperCase()}`;
       const res = await tx.insert(reservations).values({
         agencyId, reference: ref,

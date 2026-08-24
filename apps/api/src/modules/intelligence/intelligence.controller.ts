@@ -355,7 +355,7 @@ export class DocumentsController {
       if (entityType) conds.push(eq(documents.entityType, entityType));
       if (entityId) conds.push(eq(documents.entityId, entityId));
       const rows = await tx.select().from(documents).where(and(...conds)).orderBy(desc(documents.createdAt)).limit(100);
-      return rows.map((d) => ({ ...d, url: storage.signedUrl(d.objectKey, 600) }));
+      return rows.map((d) => ({ ...d, url: storage.signedUrl(d.objectKey, 600, req.ctx!.agencyId) }));
     });
   }
 
@@ -380,7 +380,7 @@ export class DocumentsController {
       await audit(tx, { agencyId: req.ctx!.agencyId, actor: { id: req.ctx!.userId, name: req.ctx!.fullName },
         entityType: 'document', entityId: inserted[0]!.id, action: 'DOCUMENT_UPLOADED',
         after: { kind, entityType: b.entityType, entityId: b.entityId } });
-      return { ...inserted[0], url: storage.signedUrl(key, 600) };
+      return { ...inserted[0], url: storage.signedUrl(key, 600, req.ctx!.agencyId) };
     });
   }
 }

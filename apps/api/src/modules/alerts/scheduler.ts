@@ -17,8 +17,17 @@ export type SchedTx = Tx;
 
 
 async function eachAgency(fn: (agencyId: string) => Promise<void>): Promise<void> {
+  // Cross-replica safety: a tick grabs a per-agency advisory lock; another replica's
+  // concurrent tick skips that agency this round (checks are retried next minute).
   const rows = await db.select({ id: agencies.id }).from(agencies);
-  for (const a of rows) await fn(a.id);
+  for (const a of rows) {
+    const lock = await db.execute(sql`select pg_try_advisory_lock(hashtextextended('scheduler:' || ${a.id}, 0)) as ok`);
+    const got = (lock as unknown as { rows: { ok: boolean }[] }).rows[0]?.ok;
+    if (!got) continue; // another replica is mid-tick for this agency
+    try { await fn(a.id); } finally {
+      await db.execute(sql`select pg_advisory_unlock(hashtextextended('scheduler:' || ${a.id}, 0))`);
+    }
+  }
 }
 
 export async function runAllChecks(): Promise<void> {

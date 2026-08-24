@@ -46,6 +46,18 @@ offline-first PWA for field operations · structured contract data → HTML→PD
 session auth + server-side RBAC · declarative alert rules engine · ports-and-adapters for
 GPS/payments/messaging with honest integration status labels.
 
+## Demo credentials — DEVELOPMENT ONLY
+
+| Account | Role |
+|---|---|
+| `owner@atlasrent.ma` | owner |
+| `manager@atlasrent.ma` / `agent@atlasrent.ma` / `field@atlasrent.ma` / `compta@atlasrent.ma` | staff roles |
+
+Password: value of `SEED_PASSWORD` (default **`locaos-demo-2026`**) — **these are demo accounts seeded
+for development/demo only. They are never production secrets; the seeder refuses to run with
+`NODE_ENV=production` unless `SEED_ALLOW_PRODUCTION=true` AND an explicit `SEED_PASSWORD` are set.**
+No real secrets are committed; the API reads everything from environment variables (`.env.example`).
+
 ## Contributing
 
 Read [`AGENTS.md`](AGENTS.md) first. No application code exists yet — Phase 1 begins after

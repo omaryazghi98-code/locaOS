@@ -72,6 +72,14 @@ export class FinanceController {
         madEquivalent = toMadEquivalent(amount, body.fxRate);
         fxRate = String(body.fxRate);
       }
+      if (body.contractId) {
+        const c = await tx.select({ status: contracts.status }).from(contracts)
+          .where(and(eq(contracts.id, body.contractId), eq(contracts.agencyId, req.ctx!.agencyId))).limit(1);
+        if (!c[0]) throw new NotFoundException('Contrat introuvable');
+        if (['BLANK_ISSUED', 'VOIDED'].includes(c[0].status)) {
+          throw new BadRequestException(`Paiement refusé: contrat ${c[0].status} — un contrat vierge/annulé ne peut pas porter d’écriture financière`);
+        }
+      }
       let cashSessionId: string | null = null;
       if (body.method === 'CASH' || body.method === 'DEPOSIT_CASH') {
         const open = await tx.select().from(cashSessions)
@@ -110,6 +118,11 @@ export class FinanceController {
         .where(and(eq(payments.id, body.reversesPaymentId), eq(payments.agencyId, req.ctx!.agencyId))).limit(1);
 
       if (!original[0]) throw new NotFoundException('Paiement original introuvable');
+      const alreadyRefunded = await tx.select({ sum: sql<string>`coalesce(sum(amount), 0)` }).from(payments)
+        .where(eq(payments.reversesPaymentId, original[0].id));
+      if (cents(body.amount) + BigInt(alreadyRefunded[0]?.sum ?? '0') > original[0].amount) {
+        throw new BadRequestException('Remboursement supérieur au paiement original (déjà remboursé: ' + String(alreadyRefunded[0]?.sum) + ' centimes)');
+      }
       const amount = cents(body.amount);
       let madEquivalent: bigint | null = null;
       let fxRate: string | null = null;

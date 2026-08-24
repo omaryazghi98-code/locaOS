@@ -17,6 +17,16 @@ import { ROLE_MATRIX } from '@locaos/domain';
 import { encryptField, last4, contentHash } from './modules/crypto/crypto.js';
 import { env } from './env.js';
 
+// Demo credentials are DEVELOPMENT-ONLY. Production seeding is refused unless both
+// SEED_ALLOW_PRODUCTION=true and an explicitly provided SEED_PASSWORD are present.
+if (env.nodeEnv === 'production' && process.env.SEED_ALLOW_PRODUCTION !== 'true') {
+  console.error('seed: REFUSING to run with NODE_ENV=production (demo credentials). Set SEED_ALLOW_PRODUCTION=true + SEED_PASSWORD to override.');
+  process.exit(1);
+}
+if (env.nodeEnv === 'production' && process.env.SEED_PASSWORD === undefined) {
+  console.error('seed: SEED_PASSWORD must be explicitly provided in production.');
+  process.exit(1);
+}
 const PASSWORD = env.seedPassword;
 const DAY = 86_400_000;
 const now = Date.now();

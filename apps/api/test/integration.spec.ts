@@ -496,3 +496,170 @@ describe('V1 — unified documents + compliance registry', () => {
     expect(Number(audits.rows[0].n)).toBeGreaterThanOrEqual(1);
   });
 });
+
+// ═══ V1 hardening pass ═══════════════════════════════════════════════════════════
+describe('hardening — operational scenarios (fail safely + auditable)', () => {
+  const mk = (over: Record<string, unknown> = {}) => ({
+    customerId: A.customerId, categoryId: A.categoryId, vehicleId: A.vehicleId,
+    branchOutId: A.branchId, branchInId: A.branchId,
+    pickupAt: new Date(Date.now() + 5 * 86400000).toISOString(),
+    returnAt: new Date(Date.now() + 7 * 86400000).toISOString(), dailyRate: '300', ...over,
+  });
+  const FUTURE = 360 * 86400000;
+
+  it('C: booking while vehicle is under an active contract fails safely (both DB walls)', async () => {
+    const r1 = await api().post('/api/reservations').set('cookie', A.ownerCookie)
+      .send(mk({ pickupAt: new Date(Date.now() + FUTURE + 30 * 86400000).toISOString(), returnAt: new Date(Date.now() + FUTURE + 32 * 86400000).toISOString() }));
+    expect(r1.status).toBe(201);
+    const gen = await api().post('/api/contracts/from-reservation').set('cookie', A.ownerCookie)
+      .send({ reservationId: r1.body.reservation.id, language: 'fr' });
+    await api().post(`/api/contracts/${gen.body.contract.id}/sign`).set('cookie', A.ownerCookie).send({ customerName: 'X Y' });
+    await api().post(`/api/contracts/${gen.body.contract.id}/activate`).set('cookie', A.ownerCookie);
+    const overlap = await api().post('/api/reservations').set('cookie', A.ownerCookie)
+      .send(mk({ pickupAt: new Date(Date.now() + FUTURE + 31 * 86400000).toISOString(), returnAt: new Date(Date.now() + FUTURE + 33 * 86400000).toISOString() }));
+    expect(overlap.status).toBe(409); // exclusion constraint and/or VEHICLE_STILL_OUT guard
+    const after = await api().post('/api/reservations').set('cookie', A.ownerCookie)
+      .send(mk({ pickupAt: new Date(Date.now() + FUTURE + 60 * 86400000).toISOString(), returnAt: new Date(Date.now() + FUTURE + 61 * 86400000).toISOString() }));
+    expect(after.status).toBe(201);
+  });
+
+  it('D: vehicle replacement amendment keeps the contract, changes the vehicle, bumps a version', async () => {
+    const r = await api().post('/api/reservations').set('cookie', A.ownerCookie)
+      .send(mk({ pickupAt: new Date(Date.now() + FUTURE + 10 * 86400000).toISOString(), returnAt: new Date(Date.now() + FUTURE + 12 * 86400000).toISOString() }));
+    const gen = await api().post('/api/contracts/from-reservation').set('cookie', A.ownerCookie).send({ reservationId: r.body.reservation.id, language: 'fr' });
+    await api().post(`/api/contracts/${gen.body.contract.id}/sign`).set('cookie', A.ownerCookie).send({ customerName: 'Rem Client' });
+    const am = await api().post(`/api/contracts/${gen.body.contract.id}/amendments`).set('cookie', A.ownerCookie)
+      .send({ kind: 'VEHICLE_REPLACEMENT', reason: 'panne batterie', newVehicleId: A.vehicle2Id });
+    expect(am.status).toBe(201);
+    const detail = await api().get(`/api/contracts/${gen.body.contract.id}`).set('cookie', A.ownerCookie);
+    expect(detail.body.contract.vehicleId).toBe(A.vehicle2Id);
+    expect(detail.body.contract.status).toBe('AMENDED');
+    expect(detail.body.versions.length).toBe(3); // draft + signed + amended
+  });
+
+  it('E: cancellation after payment keeps the immutable payment (auditable trail)', async () => {
+    const r = await api().post('/api/reservations').set('cookie', A.ownerCookie)
+      .send(mk({ pickupAt: new Date(Date.now() + FUTURE + 20 * 86400000).toISOString(), returnAt: new Date(Date.now() + FUTURE + 22 * 86400000).toISOString() }));
+    const pay = await api().post('/api/finance/payments').set('cookie', A.ownerCookie)
+      .send({ method: 'CASH', amount: '500', currency: 'MAD', reservationId: r.body.reservation.id });
+    expect(pay.status).toBe(201);
+    const cancel = await api().post(`/api/reservations/${r.body.reservation.id}/status`).set('cookie', A.ownerCookie)
+      .send({ to: 'CANCELLED', reason: 'client a annulé' });
+    expect(cancel.status).toBe(201);
+    const stillThere = await api().get('/api/finance/payments').set('cookie', A.ownerCookie);
+    expect(stillThere.body.some((p: { id: string }) => p.id === pay.body.id)).toBe(true);
+  });
+
+  it('F: concurrent conflicting vehicle transitions — exactly one wins', async () => {
+    const [t1, t2] = await Promise.allSettled([
+      api().post(`/api/fleet/vehicles/${A.vehicleId}/transition`).set('cookie', A.ownerCookie).send({ to: 'MAINTENANCE', reason: 'concurrent 1' }),
+      api().post(`/api/fleet/vehicles/${A.vehicleId}/transition`).set('cookie', A.ownerCookie).send({ to: 'MAINTENANCE', reason: 'concurrent 2' }),
+    ]);
+    const codes = [t1, t2].map((t) => t.status === 'fulfilled' ? t.value.status : 'rejected');
+    const ok = codes.filter((c) => c === 201).length;
+    expect(ok).toBe(1); // the loser is rejected by the state machine on committed state
+    // cleanup: restore
+    const detail = await api().get(`/api/fleet/vehicles/${A.vehicleId}`).set('cookie', A.ownerCookie);
+    if (detail.body.vehicle.operationalStatus === 'MAINTENANCE') {
+      await api().post(`/api/fleet/vehicles/${A.vehicleId}/transition`).set('cookie', A.ownerCookie).send({ to: 'AVAILABLE', reason: 'test cleanup' });
+    } else {
+      await api().post(`/api/fleet/vehicles/${A.vehicleId}/transition`).set('cookie', A.ownerCookie).send({ to: 'AVAILABLE', reason: 'test cleanup' });
+    }
+  });
+});
+
+describe('hardening — financial boundaries', () => {
+  it('refund exceeding the original payment is rejected', async () => {
+    const pay = await api().post('/api/finance/payments').set('cookie', A.ownerCookie).send({ method: 'CASH', amount: '100', currency: 'MAD' });
+    const tooBig = await api().post('/api/finance/refunds').set('cookie', A.ownerCookie)
+      .send({ reversesPaymentId: pay.body.id, amount: '150', currency: 'MAD' });
+    expect(tooBig.status).toBe(400);
+    const ok = await api().post('/api/finance/refunds').set('cookie', A.ownerCookie)
+      .send({ reversesPaymentId: pay.body.id, amount: '100', currency: 'MAD' });
+    expect(ok.status).toBe(201);
+    const overRest = await api().post('/api/finance/refunds').set('cookie', A.ownerCookie)
+      .send({ reversesPaymentId: pay.body.id, amount: '1', currency: 'MAD' });
+    expect(overRest.status).toBe(400); // cumulative refunds capped at original
+  });
+  it('payments cannot attach to BLANK_ISSUED or VOIDED contracts (no invisible paper finance)', async () => {
+    const blank = await api().post('/api/contracts/blank').set('cookie', A.ownerCookie).send({ language: 'fr' });
+    const res = await api().post('/api/finance/payments').set('cookie', A.ownerCookie)
+      .send({ method: 'CASH', amount: '100', currency: 'MAD', contractId: blank.body.id });
+    expect(res.status).toBe(400);
+    expect(JSON.stringify(res.body)).toContain('BLANK_ISSUED');
+  });
+  it('cash session variance cannot be overwritten (closing twice fails)', async () => {
+    const open = await api().post('/api/finance/cash-sessions/open').set('cookie', A.ownerCookie).send({ branchId: A.branchId, openingBalance: '0' });
+    const close = await api().post(`/api/finance/cash-sessions/${open.body.id}/close`).set('cookie', A.ownerCookie)
+      .send({ counted: { MAD: { '10': 1 }, EUR: {} }, fxRates: {} });
+    expect(close.status).toBe(201);
+    expect(close.body.varianceMAD).toBe('1000');
+    const again = await api().post(`/api/finance/cash-sessions/${open.body.id}/close`).set('cookie', A.ownerCookie)
+      .send({ counted: { MAD: {}, EUR: {} }, fxRates: {}, varianceExplanation: 'tentative d’écrasement' });
+    expect(again.status).toBeGreaterThanOrEqual(400);
+  });
+});
+
+describe('hardening — tenant isolation sweep (API + RLS)', () => {
+  it('every V1 surface returns zero cross-tenant rows (API wall)', async () => {
+    const endpoints = [
+      '/api/fleet/vehicles', '/api/customers', '/api/reservations', '/api/contracts',
+      '/api/inspections', '/api/finance/payments', '/api/documents', '/api/telematics/devices',
+      '/api/telematics/positions', '/api/maintenance/plans', '/api/maintenance/records',
+      '/api/maintenance/vendors', '/api/alerts?status=OPEN,ACKNOWLEDGED,RESOLVED', '/api/ops/branches',
+      '/api/transfers', '/api/integrations/messages', '/api/compliance/rules',
+      '/api/reports/customers', '/api/reports/branches',
+    ];
+    for (const ep of endpoints) {
+      const mine = await api().get(ep).set('cookie', A.ownerCookie);
+      if (mine.status !== 200) continue; // some may need params
+      const blob = JSON.stringify(mine.body);
+      expect(blob.includes(B.customerId), `${ep} leaked B customer`).toBe(false);
+      expect(blob.includes(B.vehicleId), `${ep} leaked B vehicle`).toBe(false);
+      expect(blob.includes(B.branchId), `${ep} leaked B branch`).toBe(false);
+    }
+  });
+  it('RLS wall: every V1 tenant table hides B rows under A context', async () => {
+    const tables = ['vehicles', 'customers', 'reservations', 'contracts', 'inspections', 'payments',
+      'documents', 'telematics_devices', 'telematics_events', 'vehicle_positions',
+      'maintenance_plans', 'maintenance_records', 'vendors', 'alerts', 'branches', 'compliance_rules'];
+    const c = new pg.Client({ connectionString: process.env.DATABASE_URL });
+    await c.connect();
+    await c.query(`select set_config('app.agency_id', '${A.id}', false)`);
+    let bAgencyRows = 0;
+    for (const t of tables) {
+      const r = await c.query(`select count(*)::int as n from ${t} where agency_id = $1`, [B.id]);
+      bAgencyRows += r.rows[0].n;
+    }
+    expect(bAgencyRows).toBe(0);
+    await c.end();
+  });
+});
+
+describe('hardening — storage & audit integrity', () => {
+  it('path traversal is neutralized', async () => {
+    const evil = await api().get('/api/files/..%2F..%2Fetc%2Fpasswd?exp=9999999999&sig=abc').set('cookie', A.ownerCookie);
+    expect(evil.status).toBeGreaterThanOrEqual(400);
+    expect(evil.body.toString()).not.toContain('root:');
+  });
+  it('a signed URL from another tenant is rejected', async () => {
+    // upload under A, get URL; strip/forge the agency param → rejected
+    const up = await api().post('/api/documents').set('cookie', A.ownerCookie)
+      .attach('file', Buffer.from('%PDF-1.4 tenant-test'), { filename: 'a.pdf', contentType: 'application/pdf' })
+      .field('kind', 'OTHER').field('entityType', 'other');
+    expect(up.status).toBe(201);
+    const url = new URL(up.body.url, 'http://x');
+    url.searchParams.set('a', B.id); // claim it belongs to B
+    const forged = await api().get(`${url.pathname}${url.search}`).set('cookie', B.ownerCookie);
+    expect([401, 403]).toContain(forged.status); // agency claim or signature fails — never 200
+    const legit = await api().get(up.body.url).set('cookie', A.ownerCookie);
+    expect(legit.status).toBe(200);
+    // download audited
+    const audits = await tenantExec(A.id, `select count(*)::int as n from audit_events where action='DOCUMENT_DOWNLOADED'`);
+    expect(Number(audits.rows[0].n)).toBeGreaterThanOrEqual(1);
+  });
+  it('audit log is immutable through SQL (append-only trigger)', async () => {
+    const bad = await tenantExec(A.id, `update audit_events set action='TAMPERED'`).catch((e: Error) => e);
+    expect((bad as Error).message).toContain('append-only');
+  });
+});

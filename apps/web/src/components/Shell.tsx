@@ -5,6 +5,7 @@ import { usePathname, useRouter } from 'next/navigation';
 const NAV = [
   { href: '/', label: 'Brief du jour' },
   { href: '/today', label: "Aujourd'hui" },
+  { href: '/brief', label: 'Briefs' },
   { href: '/reservations', label: 'Réservations' },
   { href: '/calendar', label: 'Calendrier' },
   { href: '/fleet', label: 'Flotte' },

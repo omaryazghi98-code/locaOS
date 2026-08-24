@@ -33,6 +33,7 @@ async function flushQueue(log: (s: string) => void) {
 
 export default function FieldPage() {
   const [startedAt, setStartedAt] = useState<string | null>(null);
+  const [pickers, setPickers] = useState<{ reservationId: string; vehicleId: string; label: string }[]>([]);
   const [form, setForm] = useState({ vehicleId: '', reservationId: '', kind: 'DEPARTURE', mileageKm: '', fuelLevelPct: '100', customerAckName: '', notes: '' });
   const [checklist, setChecklist] = useState<Record<string, boolean>>({});
   const [damages, setDamages] = useState<{ zoneCode: string; severity: string; description: string }[]>([]);
@@ -43,6 +44,19 @@ export default function FieldPage() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     setForm((f) => ({ ...f, reservationId: params.get('reservationId') ?? '', kind: params.get('kind') ?? 'DEPARTURE' }));
+    // prefill from today's departures so no UUID is ever typed by hand
+    (async () => {
+      try {
+        const t = await fetch('/api/ops/today').then((r) => r.json());
+        const deps = (t.departures ?? []).map((d: { reservation: { id: string; reference: string; vehicleId: string | null }; customerName: string; plate: string | null }) => ({
+          reservationId: d.reservation.id, vehicleId: d.reservation.vehicleId ?? '',
+          label: `${d.reservation.reference} — ${d.customerName} ${d.plate ? '· ' + d.plate : ''}`,
+        })).filter((x: { vehicleId: string }) => x.vehicleId);
+        setPickers(deps);
+        const pre = deps.find((x: { reservationId: string }) => x.reservationId === params.get('reservationId'));
+        if (pre) setForm((f) => ({ ...f, vehicleId: pre.vehicleId }));
+      } catch { /* offline: manual entry fallback */ }
+    })();
     setOnline(navigator.onLine);
     const on = () => { setOnline(true); void flushQueue((s) => setStatus((x) => [s, ...x].slice(0, 5))); setQueueLen(loadQueue().length); };
     const off = () => setOnline(false);
@@ -100,10 +114,16 @@ export default function FieldPage() {
               <select value={form.kind} onChange={(e) => setForm({ ...form, kind: e.target.value })}>
                 <option value="DEPARTURE">Départ</option><option value="RETURN">Retour</option>
               </select></div>
-            <div style={{ flex: 1.4 }}><label>ID véhicule (UUID)</label>
-              <input value={form.vehicleId} onChange={(e) => setForm({ ...form, vehicleId: e.target.value })} placeholder="coller depuis la fiche véhicule" /></div>
-            <div style={{ flex: 1.2 }}><label>ID réservation</label>
-              <input value={form.reservationId} onChange={(e) => setForm({ ...form, reservationId: e.target.value })} /></div>
+            <div style={{ flex: 1.6 }}><label>Départ du jour (véhicule + réservation)</label>
+              <select onChange={(e) => {
+                const p = pickers.find((x) => x.reservationId === e.target.value);
+                setForm((f) => ({ ...f, reservationId: e.target.value, vehicleId: p?.vehicleId ?? f.vehicleId }));
+              }} value={form.reservationId}>
+                <option value="">— saisie manuelle —</option>
+                {pickers.map((p) => <option key={p.reservationId} value={p.reservationId}>{p.label}</option>)}
+              </select></div>
+            <div style={{ flex: 1.4 }}><label>ID véhicule {pickers.length ? '' : '(UUID — aucun départ trouvé)'}</label>
+              <input value={form.vehicleId} onChange={(e) => setForm({ ...form, vehicleId: e.target.value })} placeholder="UUID véhicule" /></div>
           </div>
           <div className="row" style={{ gap: 8 }}>
             <div style={{ flex: 1 }}><label>Kilométrage</label><input inputMode="numeric" value={form.mileageKm} onChange={(e) => setForm({ ...form, mileageKm: e.target.value })} /></div>

@@ -1,5 +1,5 @@
 import { Body, Controller, ForbiddenException, Get, Param, ParseUUIDPipe, Post, Req, Query, UseGuards } from '@nestjs/common';
-import { and, desc, eq, inArray } from 'drizzle-orm';
+import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { withTenant } from '../../db/client';
 import { alertRules, alerts } from '../../db/schema';
@@ -17,7 +17,8 @@ export class AlertsController {
       const conds = [eq(alerts.agencyId, req.ctx!.agencyId)];
       if (status) conds.push(inArray(alerts.status, status.split(',') as never));
       return tx.select().from(alerts).where(and(...conds))
-        .orderBy(desc(alerts.createdAt)).limit(200);
+        .orderBy(sql`case ${alerts.severity} when 'CRITICAL' then 1 when 'HIGH' then 2 when 'ATTENTION' then 3 else 4 end`, desc(alerts.createdAt))
+        .limit(200);
     });
   }
 

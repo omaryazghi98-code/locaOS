@@ -23,7 +23,9 @@ export interface TransitionArgs {
  */
 export async function transitionVehicle(tx: Tx, agencyId: string, args: TransitionArgs) {
   const rows = await tx.select().from(vehicles)
-    .where(and(eq(vehicles.id, args.vehicleId), eq(vehicles.agencyId, agencyId))).limit(1);
+    .where(and(eq(vehicles.id, args.vehicleId), eq(vehicles.agencyId, agencyId)))
+    .for('update') // serialize concurrent transitions — no lost updates (scenario F)
+    .limit(1);
   const vehicle = rows[0];
   if (!vehicle) throw new NotFoundException('Véhicule introuvable');
   const actor = (args.actorKind ?? 'USER') as TransitionActor;

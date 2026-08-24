@@ -11,8 +11,8 @@ import { env } from '../../env';
 export interface StoragePort {
   put(key: string, data: Buffer, contentType: string): Promise<void>;
   get(key: string): Promise<{ data: Buffer; contentType: string }>;
-  signedUrl(key: string, ttlSeconds?: number): string;
-  verify(key: string, exp: string | null, sig: string | null): boolean;
+  signedUrl(key: string, ttlSeconds?: number, agencyId?: string | null): string;
+  verify(key: string, exp: string | null, sig: string | null, agencyId?: string | null): boolean;
 }
 
 class LocalStorage implements StoragePort {
@@ -37,16 +37,23 @@ class LocalStorage implements StoragePort {
     return { data: readFileSync(p), contentType };
   }
 
-  signedUrl(key: string, ttlSeconds = 300): string {
+  signedUrl(key: string, ttlSeconds = 300, agencyId?: string | null): string {
     const exp = Math.floor(Date.now() / 1000) + ttlSeconds;
-    const sig = createHmac('sha256', env.sessionSecret).update(`${key}:${exp}`).digest('hex').slice(0, 32);
-    return `/api/files/${encodeURIComponent(key)}?exp=${exp}&sig=${sig}`;
+    // tenant-scoped capability: the signature binds key + expiry + owning agency
+    const sig = this.sign(key, exp, agencyId ?? null);
+    const a = agencyId ? `&a=${agencyId}` : '';
+    return `/api/files/${encodeURIComponent(key)}?exp=${exp}&sig=${sig}${a}`;
   }
 
-  verify(key: string, exp: string | null, sig: string | null): boolean {
+  sign(key: string, exp: number, agencyId: string | null): string {
+    return createHmac('sha256', env.sessionSecret).update(`${key}:${exp}:${agencyId ?? ''}`).digest('hex').slice(0, 32);
+  }
+
+  /** agencyId (when provided) must match the session's agency AND be embedded in the signature. */
+  verify(key: string, exp: string | null, sig: string | null, agencyId?: string | null): boolean {
     if (!exp || !sig) return false;
     if (Number(exp) < Math.floor(Date.now() / 1000)) return false;
-    const expected = createHmac('sha256', env.sessionSecret).update(`${key}:${exp}`).digest('hex').slice(0, 32);
+    const expected = this.sign(key, Number(exp), agencyId ?? null);
     return expected === sig;
   }
 }

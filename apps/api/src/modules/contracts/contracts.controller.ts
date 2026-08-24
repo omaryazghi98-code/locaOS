@@ -348,7 +348,7 @@ export class ContractsController {
         agencyId: req.ctx!.agencyId, actor: { id: req.ctx!.userId, name: req.ctx!.fullName },
         entityType: 'contract', entityId: id, action: 'PAPER_SCAN_ATTACHED', after: { key },
       });
-      return { ...updated[0], scannedUrl: storage.signedUrl(key, 3600) };
+      return { ...updated[0], scannedUrl: storage.signedUrl(key, 3600, req.ctx!.agencyId) };
     });
   }
 }

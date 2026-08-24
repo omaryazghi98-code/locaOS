@@ -56,6 +56,10 @@ export default async function Today() {
                 ) : (
                   <ActionButton path="/api/contracts/from-reservation" body={{ reservationId: d.reservation.id, language: 'fr' }} label="Préparer le contrat" variant="primary" />
                 )}
+                {d.reservation.vehicleId && <>
+                  <ActionButton path={`/api/fleet/vehicles/${d.reservation.vehicleId}/transition`} body={{ to: 'PREPARING', reason: `Préparation ${d.reservation.reference}` }} label="Préparer véhicule" />
+                  <ActionButton path={`/api/fleet/vehicles/${d.reservation.vehicleId}/transition`} body={{ to: 'CONTRACT_READY', reason: `Prêt — ${d.reservation.reference}` }} label="Véhicule prêt" />
+                </>}
                 <a className="btn mini" href={`/field?reservationId=${d.reservation.id}&kind=DEPARTURE`}>Inspection départ</a>
                 <ActionButton path="/api/contracts/blank" body={{ language: 'fr' }} label="Contrat vierge" />
               </div>

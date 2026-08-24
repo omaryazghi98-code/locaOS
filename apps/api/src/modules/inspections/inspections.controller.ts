@@ -127,7 +127,7 @@ export class InspectionsController {
         agencyId: req.ctx!.agencyId, inspectionId: id, slot, objectKey: key,
         checksum: Buffer.from(String(file.size)).toString('base64').slice(0, 16),
       }).returning();
-      return { ...photo[0], url: storage.signedUrl(key, 3600) };
+      return { ...photo[0], url: storage.signedUrl(key, 3600, req.ctx!.agencyId) };
     });
   }
 
@@ -153,7 +153,7 @@ export class InspectionsController {
       const dmg = await tx.select().from(damages).where(eq(damages.discoveredInspectionId, id));
       return {
         inspection: rows[0],
-        photos: photos.map((p) => ({ ...p, url: storage.signedUrl(p.objectKey, 3600) })),
+        photos: photos.map((p) => ({ ...p, url: storage.signedUrl(p.objectKey, 3600, req.ctx!.agencyId) })),
         damages: dmg,
       };
     });
