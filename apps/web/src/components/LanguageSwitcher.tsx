@@ -1,39 +1,41 @@
 'use client';
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
 
+type Lang = 'fr' | 'ar' | 'en';
 const LANG_COOKIE = 'locaos-lang';
 
-function setLangCookie(lang: 'fr' | 'ar' | 'en') {
-  document.cookie = `${LANG_COOKIE}=${lang};path=/;max-age=31536000`;
+function setLangCookie(lang: Lang) {
+  document.cookie = `${LANG_COOKIE}=${lang};path=/;max-age=31536000;SameSite=Lax`;
 }
 
-export function LanguageSwitcher({ onLangChange }: { onLangChange: (lang: 'fr' | 'ar' | 'en') => void }) {
-  const [lang, setLang] = useState<'fr' | 'ar' | 'en'>('fr');
+function readLangCookie(): Lang {
+  const match = document.cookie.match(/(?:^|;\s*)locaos-lang=([^;]+)/);
+  if (match?.[1] === 'ar' || match?.[1] === 'en') return match[1];
+  return 'fr';
+}
+
+export function LanguageSwitcher({ onLangChange }: { onLangChange: (lang: Lang) => void }) {
+  const [lang, setLang] = useState<Lang>('fr');
 
   useEffect(() => {
-    // Read from cookie on mount
-    const match = document.cookie.match(/locaos-lang=([^;])/);
-    if (match) setLang(match[1] === 'ar' ? 'ar' : 'fr');
+    setLang(readLangCookie());
   }, []);
 
   const handleChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const next = e.target.value as 'fr' | 'ar' | 'en';
-    if (next !== lang) {
-      setLang(next);
-      setLangCookie(next);
-      onLangChange(next);
-    }
+    const next = e.target.value as Lang;
+    setLang(next);
+    setLangCookie(next);
+    onLangChange(next);
   };
 
   return (
-    <select
-      value={lang}
-      onChange={handleChange}
-      style={{ marginLeft: 12, height: '24px', fontSize: '12px' }}
-    >
-      <option value="fr">FR</option>
-      <option value="ar">AR</option>
-      <option value="en">EN</option>
-    </select>
+    <label>
+      <span className="sr-only">Language</span>
+      <select value={lang} onChange={handleChange} aria-label="Language">
+        <option value="fr">FR</option>
+        <option value="ar">AR</option>
+        <option value="en">EN</option>
+      </select>
+    </label>
   );
 }
