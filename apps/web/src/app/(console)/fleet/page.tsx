@@ -1,14 +1,14 @@
 'use client';
 
-import { apiFetch } from '@/lib/api';
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { UI_STRINGS } from '@locaos/domain/i18n';
+import { apiFetch } from '@/lib/api';
 import {
+  DataTable,
+  EmptyState,
   PageHeader,
   Section,
-  DataTable,
   StatusBadge,
-  EmptyState,
 } from '@/components';
 
 interface V {
@@ -25,30 +25,65 @@ interface V {
 
 type ColumnMode = 'compact' | 'comfortable' | 'detailed';
 
-function useDensity(): { dense: ColumnMode; setDenseMode: (mode: ColumnMode) => void } {
+const DENSITIES: Array<{ mode: ColumnMode; label: string; ariaLabel: string }> = [
+  { mode: 'compact', label: 'C', ariaLabel: 'Vue compacte' },
+  { mode: 'comfortable', label: 'Co', ariaLabel: 'Vue confortable' },
+  { mode: 'detailed', label: 'D', ariaLabel: 'Vue détaillée' },
+];
+
+function useDensity() {
   const [dense, setDense] = useState<ColumnMode>('comfortable');
+
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem('locaos-density');
-      if (saved) setDense(saved as ColumnMode);
+    const saved = window.localStorage.getItem('locaos-density');
+    if (saved === 'compact' || saved === 'comfortable' || saved === 'detailed') {
+      setDense(saved);
     }
   }, []);
+
   const setDenseMode = (mode: ColumnMode) => {
-    localStorage.setItem('locaos-density', mode);
+    window.localStorage.setItem('locaos-density', mode);
     setDense(mode);
   };
+
   return { dense, setDenseMode };
 }
 
-export default async function Fleet() {
+export default function Fleet() {
   const { dense, setDenseMode } = useDensity();
-  const vehicles = await apiFetch<V[]>('/api/fleet/vehicles');
+  const [vehicles, setVehicles] = useState<V[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    apiFetch<V[]>('/api/fleet/vehicles')
+      .then((data) => {
+        if (!cancelled) setVehicles(data);
+      })
+      .catch((err: unknown) => {
+        if (!cancelled) setError(err instanceof Error ? err.message : 'Impossible de charger la flotte.');
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const counts = vehicles.reduce<Record<string, number>>((acc, vehicle) => {
+    acc[vehicle.operationalStatus] = (acc[vehicle.operationalStatus] ?? 0) + 1;
+    return acc;
+  }, {});
 
   const columns = [
     {
       key: 'plate',
-      header: 'Immatriculation',
-      format: (_val: string, vehicle: V) => (
+      header: UI_STRINGS.FLEET.plate.fr,
+      format: (_value: unknown, vehicle: V) => (
         <a href={`/fleet/${vehicle.id}`} className="mono">
           {vehicle.plate}
         </a>
@@ -56,77 +91,81 @@ export default async function Fleet() {
     },
     {
       key: 'model',
-      header: 'Modèle',
-      format: (vehicle: V) => vehicle.model
-        ? `${vehicle.model.make} ${vehicle.model.model} (${vehicle.model.year})`
-        : '—',
-      hideIfDetailed: true,
+      header: UI_STRINGS.FLEET.model.fr,
+      format: (_value: unknown, vehicle: V) =>
+        vehicle.model ? `${vehicle.model.make} ${vehicle.model.model} (${vehicle.model.year})` : '—',
+      hideIfDetailed: false,
     },
     {
       key: 'category',
-      header: 'Catégorie',
-      format: (vehicle: V) => vehicle.category,
-      hideIfDetailed: true,
+      header: UI_STRINGS.FLEET.category.fr,
+      format: (_value: unknown, vehicle: V) => vehicle.category,
     },
     {
       key: 'operationalStatus',
-      header: 'Statut',
+      header: UI_STRINGS.FLEET.status.fr,
       Component: StatusBadge,
     },
     {
       key: 'currentMileageKm',
-      header: 'KM',
-      format: (vehicle: V) => vehicle.currentMileageKm.toLocaleString('fr-MA'),
+      header: UI_STRINGS.FLEET.mileage.fr,
+      format: (value: unknown) => Number(value).toLocaleString('fr-MA'),
     },
     {
       key: 'fuelLevelPct',
-      header: 'Carburant',
-      format: (vehicle: V) => `${vehicle.fuelLevelPct}%`,
+      header: UI_STRINGS.FLEET.fuel.fr,
+      format: (value: unknown) => `${Number(value)}%`,
     },
   ];
-
-  const counts = vehicles.reduce<Record<string, number>>(
-    (acc, v) => { acc[v.operationalStatus] = (acc[v.operationalStatus] ?? 0) + 1; return acc; },
-    {}
-  );
 
   return (
     <>
       <PageHeader
-        title="Flotte"
-        subtitle={`${vehicles.length} véhicules${vehicles.length > 0 ? ' — ' + Object.entries(counts).map(([k, n]) => `${n} ${k}`).join(' · ') : ''}`}
+        title={UI_STRINGS.FLEET.title.fr}
+        subtitle={
+          loading
+            ? UI_STRINGS.FLEET.loading.fr
+            : `${vehicles.length} ${UI_STRINGS.FLEET.vehicles.fr}${vehicles.length > 0 ? ` — ${Object.entries(counts).map(([status, count]) => `${count} ${status}`).join(' · ')}` : ''}`
+        }
       />
+
       <Section>
-        {vehicles.length === 0 && <EmptyState
-          title="Aucun véhicule"
-          description="Aucun véhicule dans la flotte"
-          action={{
-            label: 'Ajouter un véhicule',
-            onClick: () => window.location.href = '/brief?scope=fleet',
-          }}
-        />}
+        {loading && (
+          <div className="loading" role="status" aria-live="polite">
+            {UI_STRINGS.COMMON.loading.fr}
+          </div>
+        )}
 
-        <DataTable
-          columns={columns as any}
-          rows={vehicles}
-          dense={dense}
-          selectableRowIds={undefined}
-          onRowSelect={undefined}
-        />
+        {error && (
+          <div className="alert alert-CRITICAL" role="alert">
+            {error}
+          </div>
+        )}
 
-        <div style={{ marginTop: 12, display: 'flex', gap: 8 }}>
-          <button
-            className="btn mini"
-            onClick={() => setDenseMode('compact')}
-          >C</button>
-          <button
-            className="btn mini"
-            onClick={() => setDenseMode('comfortable')}
-          >Co</button>
-          <button
-            className="btn mini"
-            onClick={() => setDenseMode('detailed')}
-          >D</button>
+        {!loading && !error && vehicles.length === 0 && (
+          <EmptyState
+            title={UI_STRINGS.FLEET.emptyTitle.fr}
+            description={UI_STRINGS.FLEET.emptyDescription.fr}
+          />
+        )}
+
+        {!loading && !error && vehicles.length > 0 && (
+          <DataTable columns={columns} rows={vehicles} dense={dense} />
+        )}
+
+        <div className="density-toggle" role="group" aria-label="Densité de l'affichage" style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+          {DENSITIES.map(({ mode, label, ariaLabel }) => (
+            <button
+              key={mode}
+              type="button"
+              className={`btn mini ${dense === mode ? 'primary' : ''}`}
+              onClick={() => setDenseMode(mode)}
+              aria-label={ariaLabel}
+              aria-pressed={dense === mode}
+            >
+              {label}
+            </button>
+          ))}
         </div>
       </Section>
     </>
