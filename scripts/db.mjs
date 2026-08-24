@@ -14,14 +14,16 @@ import pg from 'pg';
 
 const MODE = process.argv[2] ?? 'status';
 const ROOT = process.cwd();
-const DIR = join(ROOT, '.pgdata');
+const DIR = join(ROOT, '.pgdata').replace(/\\/g, '/');
 const LOG = join(ROOT, '.pgdata', 'postgres.log');
 const PORT = Number(process.env.PG_PORT ?? 5432);
 const USER = 'locaos';
 const PASSWORD = process.env.PG_PASSWORD ?? 'locaos';
 const DATABASE = process.env.PG_DATABASE ?? 'locaos';
 
-const NATIVE = join(ROOT, 'node_modules', '@embedded-postgres', 'linux-x64', 'native', 'bin');
+// Dynamically determine the embedded-postgres platform package based on current OS.
+const PLATFORM = process.platform === 'win32' ? 'windows-x64' : process.platform === 'darwin' ? 'darwin-x64' : 'linux-x64';
+const NATIVE = join(ROOT, 'node_modules', '@embedded-postgres', PLATFORM, 'native', 'bin');
 const bin = (name) => join(NATIVE, name);
 
 async function isPostgres() {

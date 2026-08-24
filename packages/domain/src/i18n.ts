@@ -1,11 +1,10 @@
 /** UI string catalog — FR/AR/EN, Morocco-first (§18). Default: fr. */
-type NavLabels = { fr: string; ar: string; en: string }[];
-type Strings<T extends string> = Record<T, { fr: string | NavLabels; ar: string | NavLabels; en: string | NavLabels }>;
+type Strings<T extends string> = Record<T, { fr: string | string[]; ar: string | string[]; en: string | string[] }>;
 
 export const UI_STRINGS: Strings<'MAIN_NAV' | 'COMMAND_CENTER' | 'LOGIN' | 'SHELL' | 'ACTION' | 'CLOSE_SESSION' | 'ERROR' | 'LOGGED_IN' | 'DARK' | 'COMFORTABLE' | 'DETAILED'> = {
   MAIN_NAV: {
     fr: ['Brief du jour', "Aujourd'hui", 'Briefs', 'Réservations', 'Calendrier', 'Flotte', 'Clients', 'Contrats', 'Positions', 'Terrain (PWA)', 'Caisse & finances', 'Rapports', 'Alertes'],
-    ar: ['البرief', 'اليوم', 'الBriefs', 'الحجوزات', 'التقويم', 'الأسطول', 'العملاء', 'العقود', 'المواقع', 'الأرض (PWA)', 'المالية والتقارير', 'التنبيهات'],
+    ar: ['البرef', 'اليوم', 'الBriefs', 'الحجوزات', 'التقويم', 'الأسطول', 'العملاء', 'العقود', 'المواقع', 'الأرض (PWA)', 'المالية والتقارير', 'التنبيهات'],
     en: ['Brief of the day', 'Today', 'Briefs', 'Reservations', 'Calendar', 'Fleet', 'Customers', 'Contracts', 'Map', 'Field (PWA)', 'Cash & finance', 'Reports', 'Alerts'],
   },
   COMMAND_CENTER: {
@@ -27,7 +26,7 @@ export const UI_STRINGS: Strings<'MAIN_NAV' | 'COMMAND_CENTER' | 'LOGIN' | 'SHEL
     fr: 'Erreur', ar: 'خطأ', en: 'Error',
   },
   LOGGED_IN: {
-    fr: 'Connecté en tant que', ar: 'متصل jako', en: 'Logged in as',
+    fr: 'Connecté en tant que', ar: 'متصل como', en: 'Logged in as',
   },
   DARK: {
     fr: 'Sombre', ar: 'داكن', en: 'Dark',
