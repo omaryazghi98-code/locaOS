@@ -1,0 +1,43 @@
+/**
+ * Seed rule pack (~25 rules) from the approved research matrix (reconciliation §3).
+ * EVENT rules carry declarative conditions; SCHEDULE rules reference thin system checks;
+ * research auto-actions are converted per §14 (SUGGESTION / REQUIRE_APPROVAL).
+ * Compliance monitors (G.2) are seeded DISABLED.
+ */
+import type { AlertRuleDef } from '@locaos/domain';
+
+export const ALERT_RULE_DEFS: readonly AlertRuleDef[] = [
+  // ── Scheduled checks (documents & expiry) ─────────────────────────────────────
+  { key: 'VT_EXPIRING', name: 'Visite technique arrivant à échéance', channel: 'SCHEDULE', scheduleKey: 'docExpiry:VT', severity: 'ATTENTION', actionKind: 'CREATE_TASK', dedupWindowMinutes: 1440, enabledByDefault: true, description: 'VT expire sous ≤30 jours (périodicité configurable — registre #5)' },
+  { key: 'INSURANCE_EXPIRING', name: 'Assurance arrivant à échéance', channel: 'SCHEDULE', scheduleKey: 'docExpiry:INSURANCE', severity: 'CRITICAL', actionKind: 'CREATE_TASK', dedupWindowMinutes: 1440, enabledByDefault: true, description: 'RC expire sous ≤15 jours' },
+  { key: 'VIGNETTE_EXPIRING', name: 'Vignette (TSAV) à payer', channel: 'SCHEDULE', scheduleKey: 'docExpiry:VIGNETTE', severity: 'INFO', actionKind: 'CREATE_TASK', dedupWindowMinutes: 10080, enabledByDefault: true, description: 'Liste de paiement groupée pour le comptable' },
+  { key: 'LICENSE_EXPIRING', name: 'Permis/pièce d’identité client bientôt expiré', channel: 'SCHEDULE', scheduleKey: 'identityExpiry', severity: 'ATTENTION', actionKind: 'NOTIFY', dedupWindowMinutes: 10080, enabledByDefault: true, description: 'Contrôle avant départ — blocage si expiration pendant la location' },
+  // ── Rental operations ──────────────────────────────────────────────────────────
+  { key: 'RENTAL_OVERDUE', name: 'Location en retard', channel: 'SCHEDULE', scheduleKey: 'overdueRentals', severity: 'CRITICAL', actionKind: 'REQUIRE_APPROVAL', dedupWindowMinutes: 720, enabledByDefault: true, description: 'Rappel puis escalade — préparation de dossier vol reste humaine (§14)' },
+  { key: 'DEPARTURE_UNPREPARED', name: 'Départ non prêt (≤2h)', channel: 'SCHEDULE', scheduleKey: 'departureReadiness', severity: 'CRITICAL', actionKind: 'NOTIFY', dedupWindowMinutes: 720, enabledByDefault: true, description: 'Véhicule/caution/contrat/inspection manquants avant départ proche' },
+  { key: 'MISSING_DEPOSIT_BEFORE_DEPARTURE', name: 'Caution non sécurisée avant départ', channel: 'SCHEDULE', scheduleKey: 'departureReadiness', severity: 'CRITICAL', actionKind: 'NOTIFY', dedupWindowMinutes: 720, enabledByDefault: true, description: 'Recherche #35: empêcher le changement d’état départ sans caution' },
+  { key: 'MISSING_CONTRACT_BEFORE_DEPARTURE', name: 'Contrat non signé avant départ', channel: 'SCHEDULE', scheduleKey: 'departureReadiness', severity: 'CRITICAL', actionKind: 'NOTIFY', dedupWindowMinutes: 720, enabledByDefault: true, description: 'Recherche #28/#35' },
+  { key: 'RESERVATION_LATE_DEPARTURE', name: 'Départ en retard (grâce dépassée)', channel: 'SCHEDULE', scheduleKey: 'overdueRentals', severity: 'INFO', actionKind: 'NOTIFY', dedupWindowMinutes: 720, enabledByDefault: true, description: 'Réservation prête mais client non parti depuis >30 min' },
+  { key: 'MAINTENANCE_CONFLICT', name: 'Conflit maintenance / réservation', channel: 'SCHEDULE', scheduleKey: 'maintenanceConflicts', severity: 'ATTENTION', actionKind: 'NOTIFY', dedupWindowMinutes: 1440, enabledByDefault: true, description: 'Détection défensive (les contraintes DB bloquent déjà l’insertion)' },
+  // ── Contracts & blank reconciliation ───────────────────────────────────────────
+  { key: 'BLANK_CONTRACT_UNRECONCILED', name: 'Contrat vierge non réconcilié (>72h)', channel: 'SCHEDULE', scheduleKey: 'blankAging', severity: 'ATTENTION', actionKind: 'NOTIFY', dedupWindowMinutes: 1440, enabledByDefault: true, description: 'Le papier doit rentrer — numéro traçable (§8)' },
+  { key: 'CONTRACT_VOIDED', name: 'Contrat annulé ( VOIDED )', channel: 'EVENT', eventType: 'ContractVoided', severity: 'INFO', actionKind: 'NOTIFY', dedupWindowMinutes: 1440, enabledByDefault: true, description: 'Écart de séquence expliqué — audit' },
+  // ── Finance ────────────────────────────────────────────────────────────────────
+  { key: 'CASH_VARIANCE', name: 'Écart de caisse non nul', channel: 'EVENT', eventType: 'CashVarianceNonZero', severity: 'CRITICAL', actionKind: 'REQUIRE_APPROVAL', dedupWindowMinutes: 60, enabledByDefault: true, description: 'Le mémoire de caisse — killer feature #1 (recherche)' },
+  { key: 'CASH_SESSION_OPEN_TOO_LONG', name: 'Session de caisse ouverte >24h', channel: 'SCHEDULE', scheduleKey: 'cashSessions', severity: 'ATTENTION', actionKind: 'NOTIFY', dedupWindowMinutes: 720, enabledByDefault: true, description: 'Discipline de clôture' },
+  { key: 'PAYMENT_UNALLOCATED', name: 'Paiement non alloué', channel: 'EVENT', eventType: 'PaymentRecorded', severity: 'ATTENTION', actionKind: 'NOTIFY', dedupWindowMinutes: 720, enabledByDefault: true, conditions: [{ field: 'allocated', op: 'eq', value: false }], description: 'Recherche #73: rapprochement des fonds non affectés' },
+  { key: 'REFUND_ISSUED', name: 'Remboursement émis', channel: 'EVENT', eventType: 'RefundIssued', severity: 'ATTENTION', actionKind: 'NOTIFY', dedupWindowMinutes: 1440, enabledByDefault: true, description: 'Vérif. approbation + audit (recherche #74 converti)' },
+  { key: 'PRICE_OVERRIDDEN', name: 'Prix modifié manuellement', channel: 'EVENT', eventType: 'PriceOverridden', severity: 'ATTENTION', actionKind: 'NOTIFY', dedupWindowMinutes: 1440, enabledByDefault: true, description: 'Recherche #34/#81: justification obligatoire' },
+  { key: 'QUOTE_BELOW_FLOOR', name: 'Devis sous le prix plancher (MAP)', channel: 'EVENT', eventType: 'QuoteBelowFloor', severity: 'ATTENTION', actionKind: 'SUGGESTION', dedupWindowMinutes: 1440, enabledByDefault: true, description: 'Plancher signalé — la décision reste humaine' },
+  { key: 'DEPOSIT_PREAUTH_EXPIRING', name: 'Pré-autorisation caution expirante', channel: 'SCHEDULE', scheduleKey: 'depositPreauthExpiry', severity: 'ATTENTION', actionKind: 'CREATE_TASK', dedupWindowMinutes: 720, enabledByDefault: true, description: 'Recherche #36: renouveler la pré-autorisation CMI PLBS' },
+  { key: 'DEPOSIT_RELEASED_WITHOUT_INSPECTION', name: 'Caution libérée sans inspection retour', channel: 'EVENT', eventType: 'DepositReleased', severity: 'ATTENTION', actionKind: 'SUGGESTION', dedupWindowMinutes: 1440, enabledByDefault: true, conditions: [{ field: 'returnInspectionExists', op: 'eq', value: false }], description: 'Recherche #88 converti: signaler, pas bloquer' },
+  // ── Inspections & damage ───────────────────────────────────────────────────────
+  { key: 'INSPECTION_TOO_FAST', name: 'Inspection trop rapide (<15s)', channel: 'EVENT', eventType: 'InspectionTooFast', severity: 'ATTENTION', actionKind: 'REQUIRE_APPROVAL', dedupWindowMinutes: 1440, enabledByDefault: true, description: 'Recherche #95: re-soumission photo exigée avant validation' },
+  { key: 'DAMAGE_NEW_ON_RETURN', name: 'Nouveau dommage au retour', channel: 'EVENT', eventType: 'DamageNewOnReturn', severity: 'ATTENTION', actionKind: 'SUGGESTION', dedupWindowMinutes: 1440, enabledByDefault: true, description: 'Facturation toujours confirmée par un humain (§14)' },
+  { key: 'FUEL_LOW_ON_RETURN', name: 'Retour avec carburant < 1/4', channel: 'EVENT', eventType: 'FuelLowOnReturn', severity: 'INFO', actionKind: 'SUGGESTION', dedupWindowMinutes: 1440, enabledByDefault: true, description: 'Recherche #49 converti en suggestion de surcharge' },
+  // ── Compliance (G.2 — OFF by default until primary source verified) ───────────
+  { key: 'FLEET_BELOW_MINIMUM', name: 'Flotte sous le minimum réglementaire', channel: 'SCHEDULE', scheduleKey: 'compliance', severity: 'CRITICAL', actionKind: 'REQUIRE_APPROVAL', dedupWindowMinutes: 1440, enabledByDefault: false, description: 'Cahier des charges (sources secondaires) — vérifiez avec votre comptable' },
+  { key: 'VEHICLE_AGE_CAP_APPROACHING', name: 'Véhicule proche du plafond d’âge', channel: 'SCHEDULE', scheduleKey: 'compliance', severity: 'ATTENTION', actionKind: 'SUGGESTION', dedupWindowMinutes: 10080, enabledByDefault: false, description: 'Cap 5/6/7 ans selon énergie (sources secondaires)' },
+  // ── Security ───────────────────────────────────────────────────────────────────
+  { key: 'LOGIN_OUTSIDE_HOURS', name: 'Connexion hors heures ouvrables', channel: 'EVENT', eventType: 'LoginOutsideHours', severity: 'INFO', actionKind: 'NOTIFY', dedupWindowMinutes: 1440, enabledByDefault: true, description: 'Recherche #92' },
+];

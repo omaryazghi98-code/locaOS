@@ -1,0 +1,10 @@
+{
+  "name": "locaOS Terrain",
+  "short_name": "locaOS",
+  "description": "Inspections et remises de véhicules — mode hors ligne",
+  "start_url": "/field",
+  "display": "standalone",
+  "background_color": "#0f1216",
+  "theme_color": "#0f1216",
+  "lang": "fr"
+}

@@ -1,0 +1,32 @@
+{
+  "name": "locaos",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "pnpm@9.15.0",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "pnpm --filter @locaos/domain build && pnpm -r --filter '!@locaos/domain' build",
+    "lint": "eslint .",
+    "typecheck": "pnpm -r run typecheck",
+    "test": "pnpm --filter @locaos/domain test && pnpm --filter @locaos/api test",
+    "db:start": "node scripts/db.mjs start",
+    "db:stop": "node scripts/db.mjs stop",
+    "db:status": "node scripts/db.mjs status",
+    "db:migrate": "pnpm --filter @locaos/api db:migrate",
+    "db:seed": "pnpm --filter @locaos/api db:seed",
+    "db:reset": "node scripts/db.mjs reset && pnpm db:migrate && pnpm db:seed",
+    "dev": "pnpm db:start && pnpm db:migrate && pnpm --filter @locaos/api dev & pnpm --filter @locaos/web dev",
+    "test:ci": "node scripts/test-db.mjs"
+  },
+  "devDependencies": {
+    "@embedded-postgres/linux-x64": "17.10.0-beta.17",
+    "@eslint/js": "^9.18.0",
+    "embedded-postgres": "17.10.0-beta.17",
+    "eslint": "^9.18.0",
+    "pg": "^8.13.1",
+    "typescript": "~5.7.3",
+    "typescript-eslint": "^8.21.0"
+  }
+}
