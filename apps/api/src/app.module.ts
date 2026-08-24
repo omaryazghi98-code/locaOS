@@ -10,6 +10,7 @@ import { ContractsController } from './modules/contracts/contracts.controller.js
 import { InspectionsController } from './modules/inspections/inspections.controller.js';
 import { FinanceController } from './modules/finance/finance.controller.js';
 import { OpsController } from './modules/ops/ops.controller.js';
+import { FocusController } from './modules/ops/focus.controller.js';
 import { AlertsController } from './modules/alerts/alerts.controller.js';
 import { FilesController } from './modules/files/files.controller.js';
 import { MaintenanceController } from './modules/maintenance/maintenance.controller.js';
@@ -22,7 +23,7 @@ import {
 @Module({
   controllers: [
     AuthController, FleetController, CustomersController, ReservationsController,
-    ContractsController, InspectionsController, FinanceController, OpsController,
+    ContractsController, InspectionsController, FinanceController, OpsController, FocusController,
     AlertsController, FilesController, MaintenanceController, TelematicsController,
     TransfersController, IntelligenceOpsController, ReportsController, Customer360Controller,
     DocumentsController, IntegrationsController, ComplianceController,
