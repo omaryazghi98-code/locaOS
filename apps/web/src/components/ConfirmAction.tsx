@@ -1,5 +1,6 @@
 'use client';
-import { useState, useEffect, useRef, useCallback } from 'react';
+
+import { useCallback, useEffect, useId, useRef, useState } from 'react';
 
 type ConfirmActionProps = {
   label: string;
@@ -9,51 +10,90 @@ type ConfirmActionProps = {
   ariaLabel?: string;
 };
 
-export function ConfirmAction({ label, confirmText = 'Supprimer', variant = 'danger', ariaLabel }: ConfirmActionProps) {
+export function ConfirmAction({
+  label,
+  confirmText = 'Confirmer cette action',
+  onConfirm,
+  variant = 'danger',
+  ariaLabel,
+}: ConfirmActionProps) {
   const [open, setOpen] = useState(false);
-  const previouslyFocusedRef = useRef<HTMLElement | null>(null);
+  const triggerRef = useRef<HTMLButtonElement | null>(null);
+  const dialogRef = useRef<HTMLDivElement | null>(null);
+  const cancelRef = useRef<HTMLButtonElement | null>(null);
+  const titleId = useId();
 
-  const handleKeydown = useCallback((e: KeyboardEvent) => {
-    if (e.key === 'Escape') {
-      setOpen(false);
-      if (previouslyFocusedRef.current) {
-        previouslyFocusedRef.current.focus();
-      }
-    }
+  const close = useCallback(() => {
+    setOpen(false);
+    requestAnimationFrame(() => triggerRef.current?.focus());
   }, []);
 
   useEffect(() => {
+    if (!open) return;
+
+    const dialog = dialogRef.current;
+    cancelRef.current?.focus();
+
+    const handleKeydown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        close();
+        return;
+      }
+
+      if (event.key !== 'Tab' || !dialog) return;
+
+      const focusable = Array.from(
+        dialog.querySelectorAll<HTMLElement>(
+          'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
+        ),
+      ).filter((element) => !element.hasAttribute('disabled') && element.offsetParent !== null);
+
+      if (focusable.length === 0) {
+        event.preventDefault();
+        return;
+      }
+
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      const active = document.activeElement;
+
+      if (event.shiftKey && active === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && active === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+
     document.addEventListener('keydown', handleKeydown);
     return () => document.removeEventListener('keydown', handleKeydown);
-  }, [handleKeydown]);
+  }, [close, open]);
 
-  const handleConfirm = useCallback(() => {
+  const confirm = () => {
     setOpen(false);
     onConfirm();
-    if (previouslyFocusedRef.current) {
-      previouslyFocusedRef.current.focus();
-    }
-  }, [onConfirm]);
+    requestAnimationFrame(() => triggerRef.current?.focus());
+  };
 
   return (
     <>
       <button
+        ref={triggerRef}
+        type="button"
         className={`btn ${variant}`}
-
-        onClick={e => {
-          previouslyFocusedRef.current = e.currentTarget as HTMLElement;
-          setOpen(true);
-        }}
+        onClick={() => setOpen(true)}
         aria-label={ariaLabel ?? label}
+        aria-haspopup="dialog"
       >
         {label}
       </button>
 
       {open && (
         <div
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="confirm-title"
+          role="presentation"
+          className="confirm-overlay"
           style={{
             position: 'fixed',
             inset: 0,
@@ -61,45 +101,43 @@ export function ConfirmAction({ label, confirmText = 'Supprimer', variant = 'dan
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
+            padding: '24px',
             zIndex: 1000,
+            overflow: 'auto',
           }}
-          onClick={(e) => {
-            if (e.target === e.currentTarget) setOpen(false);
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) close();
           }}
-          style={{ overflow: 'auto' }}
         >
           <div
+            ref={dialogRef}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby={titleId}
+            tabIndex={-1}
             style={{
               background: 'var(--panel)',
               border: '1px solid var(--line)',
               borderRadius: '6px',
               padding: '24px',
               maxWidth: '400px',
-              width: '90%',
+              width: '100%',
               maxHeight: 'calc(100vh - 48px)',
               overflow: 'auto',
-              position: 'relative',
             }}
-            onClick={(e) => e.stopPropagation()}
+            onMouseDown={(event) => event.stopPropagation()}
           >
-            <h3 id="confirm-title" style={{ margin: '0 0 16px', fontSize: '14px' }}>
+            <h3 id={titleId} style={{ margin: '0 0 16px', fontSize: '14px' }}>
               {label}
             </h3>
             <p style={{ color: 'var(--muted)', margin: '0 0 20px', fontSize: '13px' }}>
               {confirmText}
             </p>
             <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
-              <button
-                className="btn mini"
-                style={{ marginRight: '8px' }}
-                onClick={() => setOpen(false)}
-              >
+              <button ref={cancelRef} type="button" className="btn mini" onClick={close}>
                 Annuler
               </button>
-              <button
-                className="btn mini primary"
-                onClick={handleConfirm}
-              >
+              <button type="button" className="btn mini primary" onClick={confirm}>
                 OK
               </button>
             </div>
