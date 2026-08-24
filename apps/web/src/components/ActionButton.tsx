@@ -1,5 +1,6 @@
 'use client';
 import { useState, useTransition } from 'react';
+import { UI_STRINGS } from '@locaos/domain/i18n';
 import { useRouter } from 'next/navigation';
 
 export default function ActionButton({
@@ -22,7 +23,8 @@ export default function ActionButton({
     const out = await res.json().catch(() => null);
     setBusy(false);
     if (!res.ok) {
-      alert(out?.error?.message ?? out?.message ?? `Erreur ${res.status}`);
+      const msg = out?.error?.message ?? out?.message ?? UI_STRINGS.ERROR.fr;
+      alert(msg);
       return;
     }
     startTransition(() => router.refresh());
