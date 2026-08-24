@@ -2,7 +2,7 @@
 
 import type { CSSProperties, ComponentType, ReactNode } from 'react';
 
-type Column<T = unknown> = {
+export type Column<T = unknown> = {
   key: string;
   header: string;
   className?: string;
@@ -103,7 +103,7 @@ export function DataTable<T extends { id?: string }>({
                   </td>
                 )}
                 {columns.map((col) => {
-                  if (dense !== 'detailed' && col.hideIfDetailed) return null;
+                  if (dense === 'compact' && col.hideIfDetailed) return null;
                   const val = row[col.key as keyof T];
                   return (
                     <td key={col.key} className={col.className} style={densityStyles}>
