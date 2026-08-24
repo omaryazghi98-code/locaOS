@@ -27,7 +27,7 @@ type DbLike = typeof db | Parameters<Parameters<typeof db.transaction>[0]>[0];
 
 export async function raiseAlert(args: {
   agencyId: string; ruleKey: string; severity: AlertSeverity; sourceKind?: 'RULE' | 'SCHEDULE' | 'SIGNAL';
-  entityType?: string; entityId?: string; title: string; message: string; evidence?: unknown;
+  category?: string; entityType?: string; entityId?: string; title: string; message: string; evidence?: unknown;
   dedupAt?: Date; tx?: DbLike;
 }): Promise<void> {
   const runner = args.tx ?? db;
@@ -35,6 +35,7 @@ export async function raiseAlert(args: {
   await runner.insert(alerts).values({
     agencyId: args.agencyId,
     ruleKey: args.ruleKey,
+    category: args.category ?? 'OPERATIONS',
     severity: args.severity,
     sourceKind: args.sourceKind ?? 'RULE',
     entityType: args.entityType ?? null,

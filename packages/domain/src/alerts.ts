@@ -4,7 +4,7 @@
  *  2. SCHEDULE rules — thin registered checks (system rules) run by the scheduler
  *  3. SIGNALS      — derived conditions (ADR-0010), also raised through this record shape
  */
-export const ALERT_SEVERITIES = ['INFO', 'ATTENTION', 'CRITICAL'] as const;
+export const ALERT_SEVERITIES = ['INFO', 'ATTENTION', 'HIGH', 'CRITICAL'] as const;
 export type AlertSeverity = (typeof ALERT_SEVERITIES)[number];
 
 export const ALERT_STATUSES = ['OPEN', 'ACKNOWLEDGED', 'RESOLVED', 'SUPPRESSED'] as const;

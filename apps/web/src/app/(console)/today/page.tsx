@@ -20,7 +20,7 @@ const BLOCKERS: Record<string, string> = {
 };
 
 export default async function Today() {
-  const t = await apiFetch<{ departures: Departure[]; returns: Return[]; tomorrowDepartureCount: number }>('/api/ops/today');
+  const t = await apiFetch<{ departures: Departure[]; returns: Return[]; tomorrowDepartureCount: number; pendingTransfers: { t: { id: string; reason: string; toBranchId: string }; plate: string }[] }>('/api/ops/today');
   return (
     <div>
       <div className="topbar"><div>
@@ -64,6 +64,18 @@ export default async function Today() {
         </div>
 
         <div>
+          <h2>Transferts recommandés</h2>
+          {(!t.pendingTransfers || t.pendingTransfers.length === 0) && <div className="sub">Aucun transfert requis.</div>}
+          {(t.pendingTransfers ?? []).map((x) => (
+            <div key={x.t.id} className="card" style={{ marginBottom: 10 }}>
+              <div className="row spread"><div className="big">{x.plate}</div></div>
+              <div className="sub">{x.t.reason}</div>
+              <div className="btnrow">
+                <ActionButton path={`/api/transfers/${x.t.id}/execute`} label="Transfert effectué" variant="primary" confirmText="Confirmer que le véhicule a bien été conduit à l'agence cible ?" />
+                <ActionButton path={`/api/transfers/${x.t.id}/cancel`} promptLabel="Motif d'annulation" promptField="reason" label="Annuler" variant="danger" />
+              </div>
+            </div>
+          ))}
           <h2>Retours</h2>
           {t.returns.length === 0 && <div className="sub">Aucun retour aujourd'hui.</div>}
           {t.returns.map((r) => (

@@ -17,6 +17,8 @@ decision writes a new ADR that links back.
 | [0007](0007-contract-engine-structured-pdf.md) | Contract engine: structured data → templates → HTML→PDF (Chromium) | Proposed |
 | [0008](0008-financial-integrity-ledger.md) | Financial integrity: integer money, append-only records, reversal corrections, cash sessions | Proposed |
 | [0009](0009-alerts-telematics-ai-boundaries.md) | Alert rules engine, telematics port, read-only AI layer | Proposed (amended 2026-08-24) |
+| [0011](0011-phase1-implementation-notes.md) | Implementation notes: npm-distributed infra (Drizzle pivot, embedded PG, Chromium) | Accepted |
+| [0012](0012-v1-integration-ports.md) | V1 integration ports: signature, messaging, telematics (honest modes) | Proposed |
 | [0010](0010-vehicle-state-machine-signals.md) | Vehicle status: one state machine + derived condition layer (signals) | Proposed |
 
 ## Template

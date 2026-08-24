@@ -12,12 +12,20 @@ import { FinanceController } from './modules/finance/finance.controller.js';
 import { OpsController } from './modules/ops/ops.controller.js';
 import { AlertsController } from './modules/alerts/alerts.controller.js';
 import { FilesController } from './modules/files/files.controller.js';
+import { MaintenanceController } from './modules/maintenance/maintenance.controller.js';
+import { TelematicsController } from './modules/telematics/telematics.controller.js';
+import {
+  TransfersController, IntelligenceOpsController, ReportsController,
+  Customer360Controller, DocumentsController, IntegrationsController, ComplianceController,
+} from './modules/intelligence/intelligence.controller.js';
 
 @Module({
   controllers: [
     AuthController, FleetController, CustomersController, ReservationsController,
     ContractsController, InspectionsController, FinanceController, OpsController,
-    AlertsController, FilesController,
+    AlertsController, FilesController, MaintenanceController, TelematicsController,
+    TransfersController, IntelligenceOpsController, ReportsController, Customer360Controller,
+    DocumentsController, IntegrationsController, ComplianceController,
   ],
   providers: [
     AuthGuard, PermissionsGuard,

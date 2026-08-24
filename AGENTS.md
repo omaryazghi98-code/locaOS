@@ -80,11 +80,23 @@ TypeScript strict; conventional commits; intention-revealing service methods
 domain package stays framework-free; provider SDKs confined to adapter packages; tests
 colocated; migrations forward-only, never edit applied migrations.
 
+## Commands (repo root)
+
+```
+pnpm db:start        # embedded Postgres 17 (dev/CI; production = managed PG — docs/deployment.md)
+pnpm db:migrate      # forward-only SQL migrations
+pnpm db:seed         # Atlas Rent SARL demo data (incl. V1 maintenance/telematics/compliance)
+pnpm dev             # api (:3001) + web (:3000)
+pnpm lint && pnpm typecheck && pnpm test
+node scripts/test-db.mjs   # full integration suite against a fresh isolated locaos_test DB
+```
+
 ## Current status
 
-**Phase 0 (architecture) — reconciled with the research document (2026-08-24); awaiting
-product-owner approval of the MVP scope (open decision G.1). No application code exists
-yet.** Phase 1 (foundations) starts only after MVP approval. The research terminology
-crosswalk lives in the reconciliation §1.3 — preserve research terms (caution, Blank Slate,
-ghost state, franchise, visite technique, vignette, Admission Temporaire, MRE, PLBS,
-Constat Amiable) in UI copy and code comments.
+**Phase 1 (MVP) shipped; V1 (operational intelligence) implemented — in owner review.**
+Working tree = monorepo: `packages/domain` (pure TS rules), `apps/api` (NestJS + Drizzle +
+raw-SQL hardening: RLS via non-superuser app role, append-only triggers, exclusion
+constraints), `apps/web` (Next.js console FR-first). 25 domain + 35 integration tests.
+Integrations (Damanesign / WhatsApp / GPS) are behind honest ports: MOCK/UNAVAILABLE until
+credentials exist — never faked (ADR-0012). Preserve research terminology (caution, Blank
+Slate, ghost state, franchise, visite technique, vignette, AT, MRE, PLBS) in UI copy.

@@ -10,8 +10,10 @@ const NAV = [
   { href: '/fleet', label: 'Flotte' },
   { href: '/customers', label: 'Clients' },
   { href: '/contracts', label: 'Contrats' },
+  { href: '/map', label: 'Positions' },
   { href: '/field', label: 'Terrain (PWA)' },
   { href: '/finance', label: 'Caisse & finances' },
+  { href: '/reports', label: 'Rapports' },
   { href: '/alerts', label: 'Alertes' },
 ];
 

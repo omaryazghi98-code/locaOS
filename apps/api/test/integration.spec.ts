@@ -357,3 +357,142 @@ describe('alert engine — scheduled checks raise alerts', () => {
     expect(resolve.body.status).toBe('RESOLVED');
   });
 });
+
+// ═══ V1 subsystems ═══════════════════════════════════════════════════════════════
+describe('V1 — maintenance subsystem', () => {
+  it('creates a plan and a record; costs and downtime recorded, plan progresses', async () => {
+    const plan = await api().post('/api/maintenance/plans').set('cookie', A.ownerCookie)
+      .send({ vehicleId: A.vehicleId, taskKind: 'OIL', basis: 'MILEAGE', intervalKm: 10000, lastDoneKm: 40000 });
+    expect(plan.status).toBe(201);
+    expect(plan.body.nextDueKm).toBe(50000);
+    const rec = await api().post('/api/maintenance/records').set('cookie', A.ownerCookie)
+      .send({ vehicleId: A.vehicleId, planId: plan.body.id, taskKind: 'OIL', mileageKm: 51000, partsCost: '600', laborCost: '200', downtimeHours: 4 });
+    expect(rec.status).toBe(201);
+    expect(rec.body.totalCost).toBe('80000');
+    const plans = await api().get('/api/maintenance/plans').set('cookie', A.ownerCookie);
+    const mine = plans.body.find((p: { id: string }) => p.id === plan.body.id);
+    expect(mine.state).toBe('OK'); // record advanced the plan: next due 61000 at mileage 51000
+  });
+  it('deterministic detection raises MAINTENANCE_DUE for an overdue plan', async () => {
+    // plan due in the past
+    const plan = await api().post('/api/maintenance/plans').set('cookie', A.ownerCookie)
+      .send({ vehicleId: A.vehicle2Id, taskKind: 'TIRES', basis: 'TIME', intervalDays: 7 });
+    expect(plan.status).toBe(201);
+    await tenantExec(A.id, `update maintenance_plans set next_due_at = now() - interval '1 day' where id = '${plan.body.id}'`);
+    const { runV1Checks } = await import('../dist/modules/alerts/scheduler.v1.js');
+    await withTenant(A.id, (tx) => runV1Checks(tx as never, A.id));
+    const alerts = await api().get('/api/alerts?status=OPEN').set('cookie', A.ownerCookie);
+    expect(alerts.body.some((x: { ruleKey: string }) => x.ruleKey === 'MAINTENANCE_DUE')).toBe(true);
+  });
+});
+
+describe('V1 — telematics signals (DETECT → EXPLAIN → ALERT)', () => {
+  it('ingest is idempotent; ghost movement raises a CRITICAL evidence-based alert', async () => {
+    await tenantExec(A.id, `insert into telematics_devices (agency_id, provider, external_id, vehicle_id, status)
+      values ('${A.id}', 'MOCK', 'TEST-DEV-1', '${A.vehicleId}', 'MOCK')`);
+    const { ingestFix } = await import('../dist/modules/telematics/telematics.controller.js');
+    const fix = (msgId: string, speed: number, minsAgo = 0) => ({
+      deviceId: 'TEST-DEV-1', messageId: msgId, occurredAt: new Date(Date.now() - minsAgo * 60000).toISOString(),
+      lat: 33.36, lng: -7.58, speedKmh: speed, ignitionOn: speed > 0,
+    });
+    // vehicle is AVAILABLE in these tests (never transitioned to RENTED) → moving = ghost
+    const r1 = await ingestFix(A.id, fix('m1', 40, 4));
+    const dup = await ingestFix(A.id, fix('m1', 40, 4));
+    expect(r1.accepted).toBe(true);
+    expect(dup.accepted).toBe(false); // idempotent
+    await ingestFix(A.id, fix('m2', 55, 2));
+    const { runV1Checks } = await import('../dist/modules/alerts/scheduler.v1.js');
+    await withTenant(A.id, (tx) => runV1Checks(tx as never, A.id));
+    const alerts = await api().get('/api/alerts?status=OPEN').set('cookie', A.ownerCookie);
+    const ghost = alerts.body.find((x: { ruleKey: string }) => x.ruleKey === 'GHOST_MOVE');
+    expect(ghost).toBeTruthy();
+    expect(ghost.severity).toBe('CRITICAL');
+    expect(ghost.message).toContain('vérifier avant toute conclusion'); // explains, never accuses
+  });
+});
+
+describe('V1 — transfers (recommend, human executes)', () => {
+  it('recommends a transfer for a cross-branch departure and executes it', async () => {
+    // second branch for agency A
+    const b2 = (await tenantExec(A.id, `insert into branches (agency_id, name, city) values ('${A.id}','Agence Nord','Rabat') returning id`)).rows[0].id;
+    const resv = await api().post('/api/reservations').set('cookie', A.ownerCookie).send({
+      customerId: A.customerId, categoryId: A.categoryId, vehicleId: A.vehicle2Id,
+      branchOutId: b2, branchInId: b2,
+      pickupAt: new Date(Date.now() + 20 * 3600000).toISOString(),
+      returnAt: new Date(Date.now() + 22 * 3600000).toISOString(), dailyRate: '300',
+    });
+    expect(resv.status).toBe(201);
+    const { runV1Checks } = await import('../dist/modules/alerts/scheduler.v1.js');
+    await withTenant(A.id, (tx) => runV1Checks(tx as never, A.id));
+    const list = await api().get('/api/transfers').set('cookie', A.ownerCookie);
+    const mine = list.body.find((x: { t: { reservationId: string } }) => x.t.reservationId === resv.body.reservation.id);
+    expect(mine).toBeTruthy(); // recommended, not auto-executed
+    const exec = await api().post(`/api/transfers/${mine.t.id}/execute`).set('cookie', A.ownerCookie);
+    expect(exec.status).toBe(201);
+    expect(exec.body.status).toBe('DONE');
+    const veh = await api().get(`/api/fleet/vehicles/${A.vehicle2Id}`).set('cookie', A.ownerCookie);
+    expect(veh.body.vehicle.currentBranchId).toBe(b2); // branch updated by the human action
+  });
+});
+
+describe('V1 — signature & messaging providers (honest modes)', () => {
+  it('signature: mock creates PENDING only; completion is an explicit human action labeled SIMULATED', async () => {
+    const { integrationStatuses } = await import('../dist/modules/integrations/providers.js');
+    const statuses = integrationStatuses();
+    expect(statuses.some((p: { kind: string; status: string }) => p.kind === 'SIGNATURE' && p.status === 'MOCK')).toBe(true);
+    const resv = await api().post('/api/reservations').set('cookie', A.ownerCookie).send({
+      customerId: A.customerId, categoryId: A.categoryId, vehicleId: null,
+      branchOutId: A.branchId, branchInId: A.branchId,
+      pickupAt: new Date(Date.now() + 60 * 86400000).toISOString(),
+      returnAt: new Date(Date.now() + 62 * 86400000).toISOString(), dailyRate: '300',
+    });
+    const gen = await api().post('/api/contracts/from-reservation').set('cookie', A.ownerCookie)
+      .send({ reservationId: resv.body.reservation.id, language: 'fr' });
+    const req = await api().post(`/api/integrations/contracts/${gen.body.contract.id}/signature-request`)
+      .set('cookie', A.ownerCookie).send({ signerName: 'Client Test' });
+    expect(req.status).toBe(201);
+    expect(req.body.mode).toBe('MOCK');
+    expect(req.body.status).toBe('PENDING'); // never fakes success
+    const done = await api().post(`/api/integrations/signature-requests/${req.body.requestId}/complete-mock`)
+      .set('cookie', A.ownerCookie);
+    expect(done.status).toBe(201);
+    expect(done.body.note).toContain('SIMUL');
+  });
+  it('messaging: mock provider marks messages SIMULATED and never claims SENT', async () => {
+    const send = await api().post('/api/integrations/messages').set('cookie', A.ownerCookie)
+      .send({ toPhone: '+212600000001', template: 'RETURN_REMINDER', params: { name: 'Test', date: 'demain', branch: 'CMN' } });
+    expect(send.status).toBe(201);
+    expect(['SIMULATED']).toContain(send.body.status);
+    const outbox = await api().get('/api/integrations/messages').set('cookie', A.ownerCookie);
+    expect(outbox.body.some((m: { status: string }) => m.status === 'SIMULATED')).toBe(true);
+  });
+});
+
+describe('V1 — unified documents + compliance registry', () => {
+  it('uploads with metadata, serves signed URLs, denies cross-tenant access', async () => {
+    const up = await api().post('/api/documents').set('cookie', A.ownerCookie)
+      .attach('file', Buffer.from('%PDF-1.4 fake'), { filename: 'attestation.pdf', contentType: 'application/pdf' })
+      .field('kind', 'INSURANCE').field('entityType', 'vehicle').field('entityId', A.vehicleId).field('label', 'Attestation test');
+    expect(up.status).toBe(201);
+    expect(up.body.url).toContain('/api/files/');
+    const listA = await api().get('/api/documents?entityType=vehicle').set('cookie', A.ownerCookie);
+    expect(listA.body.length).toBeGreaterThan(0);
+    const listB = await api().get('/api/documents?entityType=vehicle').set('cookie', B.ownerCookie);
+    expect(listB.body.length).toBe(0); // tenant isolation on documents
+    // signed URL without signature is rejected
+    const bare = await api().get(`/api/files/${encodeURIComponent(up.body.objectKey)}`);
+    expect(bare.status).toBe(401);
+  });
+  it('compliance registry: source-labelled rules, toggling is audited, OFF by default', async () => {
+    await tenantExec(A.id, `insert into compliance_rules (agency_id, key, label, source_ref, effective_date, config, enabled)
+      values ('${A.id}', 'FLEET_MINIMUM', 'Flotte minimum (test)', 'source test registre #15', '2024-04-15', '{"minimum": 7}', false)`);
+    const rules = await api().get('/api/compliance/rules').set('cookie', A.ownerCookie);
+    const rule = rules.body.find((r: { key: string }) => r.key === 'FLEET_MINIMUM');
+    expect(rule.enabled).toBe(false);
+    expect(rule.sourceRef).toContain('registre'); // source is part of the record
+    const on = await api().post('/api/compliance/rules/FLEET_MINIMUM/toggle').set('cookie', A.ownerCookie).send({ enabled: true });
+    expect(on.body.enabled).toBe(true);
+    const audits = await tenantExec(A.id, `select count(*)::int as n from audit_events where action='COMPLIANCE_RULE_TOGGLED'`);
+    expect(Number(audits.rows[0].n)).toBeGreaterThanOrEqual(1);
+  });
+});

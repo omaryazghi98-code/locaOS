@@ -9,7 +9,10 @@ interface Detail {
 
 export default async function CustomerDetail({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const d = await apiFetch<Detail>(`/api/customers/${id}`);
+  const [d, full] = await Promise.all([
+    apiFetch<Detail>(`/api/customers/${id}`),
+    apiFetch<{ reservations: { id: string; reference: string; status: string; pickupAt: string }[]; stats?: { revenue_mad?: string; avg_days?: string; cancellations?: number }; damages: { id: string; zone_code: string; plate: string }[] }>(`/api/customers/${id}/360`).catch(() => null),
+  ]);
   const c = d.customer;
   return (
     <div>
@@ -41,6 +44,25 @@ export default async function CustomerDetail({ params }: { params: Promise<{ id:
           ))}
           <h2>Notes</h2>
           <div className="card">{c.notes ?? '—'}</div>
+
+          <h2>Historique & valeur (360°)</h2>
+          {full && (
+            <>
+              <div className="grid cards">
+                <div className="card"><div className="k">CA total</div><div className="v ok">{new Intl.NumberFormat('fr-MA').format(Number(full.stats?.revenue_mad ?? 0) / 100)} MAD</div></div>
+                <div className="card"><div className="k">Durée moyenne</div><div className="v">{Number(full.stats?.avg_days ?? 0).toFixed(1)} j</div></div>
+                <div className="card"><div className="k">Annulations</div><div className="v">{full.stats?.cancellations ?? 0}</div></div>
+                <div className="card"><div className="k">Locations</div><div className="v">{full.reservations.length}</div></div>
+              </div>
+              <table className="tbl" style={{ marginTop: 8 }}><thead><tr><th>Référence</th><th>Statut</th><th>Départ</th></tr></thead>
+                <tbody>{full.reservations.slice(0, 8).map((r) => (
+                  <tr key={r.id}><td className="mono"><a href={`/reservations/${r.id}`}>{r.reference}</a></td>
+                    <td>{r.status}</td><td>{new Intl.DateTimeFormat('fr-MA', { dateStyle: 'short' }).format(new Date(r.pickupAt))}</td></tr>
+                ))}</tbody></table>
+              {full.damages.length > 0 && <div className="sub" style={{ marginTop: 8 }}>Dommages liés: {full.damages.map((x) => `${x.plate}·${x.zone_code}`).join(', ')}</div>}
+              <div className="sub" style={{ marginTop: 6 }}>Indicateurs objectifs uniquement — aucun score opaque, aucune liste noire automatisée (V1 §11).</div>
+            </>
+          )}
         </div>
       </div>
     </div>

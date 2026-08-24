@@ -15,6 +15,7 @@ import { transitionVehicle } from '../fleet/fleet.service.js';
 
 export type SchedTx = Tx;
 
+
 async function eachAgency(fn: (agencyId: string) => Promise<void>): Promise<void> {
   const rows = await db.select({ id: agencies.id }).from(agencies);
   for (const a of rows) await fn(a.id);
@@ -34,6 +35,8 @@ export async function runAllChecks(): Promise<void> {
     await checkDepositPreauth(tx as SchedTx, agencyId);
     await checkCompliance(tx as SchedTx, agencyId);
     await applyPreparationWindow(tx as SchedTx, agencyId);
+    const { runV1Checks } = await import('./scheduler.v1.js');
+    await runV1Checks(tx as never as Tx, agencyId);
   }));
 }
 

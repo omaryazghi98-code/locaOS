@@ -290,6 +290,46 @@ async function main() {
   await transition(veh('18876-A-6').id, 'RENTED', 'OVERDUE', 'Fin de contrat dépassée (évaluateur)', { hoursAgo: 3 });
   await transition(veh('29954-B-18').id, 'AVAILABLE', 'MAINTENANCE', 'Révision 90 000 km planifiée', { hoursAgo: 5, interrupted: undefined });
 
+  console.log('seed: V1 — maintenance, vendors, telematics MOCK, compliance registry…');
+  const { vendors, maintenancePlans, maintenanceRecords, telematicsDevices, vehiclePositions, complianceRules } = await import('./db/schema.js');
+  const [garageSgs, garageNori] = await db.insert(vendors).values([
+    { agencyId: agency!.id, name: 'SGS Auto Nouaceur', kind: 'GARAGE', phone: '+212522330011', city: 'Nouaceur' },
+    { agencyId: agency!.id, name: 'Norisko Ain Sebaa', kind: 'GARAGE', phone: '+212522660022', city: 'Casablanca' },
+    { agencyId: agency!.id, name: 'Lavage Prestige CMN', kind: 'CLEANING', phone: '+212662334455', city: 'Nouaceur' },
+  ]).returning() as unknown as [{ id: string }, { id: string }, { id: string }];
+  // mileage-based plans on a few vehicles
+  const planRows = await db.insert(maintenancePlans).values([
+    { agencyId: agency!.id, vehicleId: veh('38214-A-6').id, taskKind: 'OIL', basis: 'MILEAGE', intervalKm: 10000, lastDoneKm: 32000, nextDueKm: 42000 },
+    { agencyId: agency!.id, vehicleId: veh('47718-B-6').id, taskKind: 'OIL', basis: 'MILEAGE', intervalKm: 10000, lastDoneKm: 56000, nextDueKm: 66000 },
+    { agencyId: agency!.id, vehicleId: veh('77341-C-16').id, taskKind: 'TIRES', basis: 'TIME', intervalDays: 365, nextDueAt: new Date(Date.now() + 5 * 86400000) },
+  ]).returning();
+  // historical records incl. a repeated-fault case (Duster: BRAKES ×3 in 90d) and a costly one (Tucson)
+  await db.insert(maintenanceRecords).values([
+    { agencyId: agency!.id, vehicleId: veh('29954-B-18').id, taskKind: 'BRAKES', vendorId: garageSgs.id, vendorName: 'SGS Auto Nouaceur', performedAt: new Date(Date.now() - 80 * 86400000), mileageKm: 84100, partsCost: 120000n, laborCost: 40000n, totalCost: 160000n, downtimeHours: 8 },
+    { agencyId: agency!.id, vehicleId: veh('29954-B-18').id, taskKind: 'BRAKES', vendorId: garageSgs.id, vendorName: 'SGS Auto Nouaceur', performedAt: new Date(Date.now() - 45 * 86400000), mileageKm: 86200, partsCost: 90000n, laborCost: 35000n, totalCost: 125000n, downtimeHours: 6 },
+    { agencyId: agency!.id, vehicleId: veh('29954-B-18').id, taskKind: 'BRAKES', vendorId: garageSgs.id, vendorName: 'SGS Auto Nouaceur', performedAt: new Date(Date.now() - 10 * 86400000), mileageKm: 88100, partsCost: 95000n, laborCost: 35000n, totalCost: 130000n, downtimeHours: 6 },
+    { agencyId: agency!.id, vehicleId: veh('45102-B-1').id, taskKind: 'GENERAL', vendorId: garageNori.id, vendorName: 'Norisko Ain Sebaa', performedAt: new Date(Date.now() - 20 * 86400000), mileageKm: 21900, partsCost: 150000n, laborCost: 80000n, totalCost: 230000n, downtimeHours: 24 },
+  ]);
+  void planRows;
+  // estimated acquisition values (profitability inputs)
+  for (const [plate, valueMad] of [['38214-A-6', 115000], ['38215-A-6', 114000], ['45102-B-1', 158000], ['45103-B-1', 157000], ['77341-C-16', 205000], ['77342-C-16', 207000], ['18876-A-6', 185000], ['29954-B-18', 240000], ['51023-A-16', 172000], ['60011-A-6', 235000], ['47718-B-6', 98000]] as const) {
+    await db.update(vehicles).set({ estimatedValue: BigInt(valueMad) * 100n }).where(sql`id = ${veh(plate).id}`);
+  }
+  // Mock telematics device — explicitly labeled MOCK (V1 §7; no real provider integrated)
+  const [mockDev] = await db.insert(telematicsDevices).values({
+    agencyId: agency!.id, provider: 'MOCK', externalId: 'MOCK-0001', vehicleId: veh('77341-C-16').id, status: 'MOCK', lastSeenAt: new Date(),
+  }).returning();
+  await db.insert(vehiclePositions).values({
+    vehicleId: veh('77341-C-16').id, agencyId: agency!.id, lat: '33.3675', lng: '-7.5899',
+    speedKmh: 0, heading: null, ignitionOn: false, voltage: '12.4', fixedAt: new Date(),
+  }).onConflictDoNothing();
+  void mockDev;
+  // compliance registry (V1 §16) — OFF by default; source + config per rule
+  await db.insert(complianceRules).values([
+    { agencyId: agency!.id, key: 'FLEET_MINIMUM', label: 'Flotte minimum (7 véhicules)', sourceRef: 'Cahier des charges location sans chauffeur — sources secondaires (registre #15), à vérifier avec votre comptable', effectiveDate: '2024-04-15', config: { minimum: 7 } as never, enabled: false },
+    { agencyId: agency!.id, key: 'VEHICLE_AGE_CAP', label: 'Plafond d’âge des véhicules (ICE 5 ans)', sourceRef: 'Cahier des charges — sources secondaires (registre #15), à vérifier avec votre comptable', effectiveDate: '2024-04-15', config: { ice: 5, hybrid: 6, ev: 7 } as never, enabled: false },
+  ]);
+
   console.log('seed: alert rules (research pack) + compliance (OFF by default — G.2)…');
   await db.insert(alertRules).values(ALERT_RULE_DEFS.map((d) => ({
     agencyId: agency!.id, key: d.key, name: d.name, channel: d.channel,

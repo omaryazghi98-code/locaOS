@@ -18,14 +18,14 @@ export const fleetStatus = pgEnum('fleet_status', ['IN_FLEET', 'FOR_SALE', 'SOLD
 export const reservation_status = pgEnum('reservation_status', [
   'DRAFT', 'CONFIRMED', 'VEHICLE_ASSIGNED', 'READY', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED', 'NO_SHOW',
 ]);
-export const contract_status = pgEnum('contract_status', ['BLANK_ISSUED', 'DRAFT', 'SIGNED', 'ACTIVE', 'CLOSED', 'AMENDED', 'VOIDED']);
+export const contract_status = pgEnum('contract_status', ['BLANK_ISSUED', 'DRAFT', 'GENERATED', 'SIGNATURE_REQUESTED', 'SIGNED', 'ACTIVE', 'CLOSED', 'AMENDED', 'VOIDED']);
 export const payment_method = pgEnum('payment_method', ['CASH', 'CARD', 'TRANSFER', 'DEPOSIT_CASH', 'REFUND']);
 export const payment_direction = pgEnum('payment_direction', ['IN', 'OUT']);
 export const payment_purpose = pgEnum('payment_purpose', ['RENTAL', 'DEPOSIT', 'DAMAGE', 'FUEL', 'FINE', 'OTHER']);
 export const deposit_status = pgEnum('deposit_status', ['PLANNED', 'HELD', 'PRE_AUTHORIZED', 'RELEASED', 'PARTIALLY_CHARGED', 'SETTLED']);
 export const deposit_method = pgEnum('deposit_method', ['CASH_HELD', 'CARD_PREAUTH', 'BANK']);
 export const inspection_kind = pgEnum('inspection_kind', ['DEPARTURE', 'RETURN']);
-export const alert_severity = pgEnum('alert_severity', ['INFO', 'ATTENTION', 'CRITICAL']);
+export const alert_severity = pgEnum('alert_severity', ['INFO', 'ATTENTION', 'HIGH', 'CRITICAL']);
 export const alert_status = pgEnum('alert_status', ['OPEN', 'ACKNOWLEDGED', 'RESOLVED', 'SUPPRESSED']);
 export const action_kind = pgEnum('action_kind', ['NOTIFY', 'CREATE_TASK', 'REQUIRE_APPROVAL', 'SUGGESTION']);
 export const alert_channel = pgEnum('alert_channel', ['EVENT', 'SCHEDULE', 'SIGNAL']);
@@ -212,6 +212,7 @@ export const vehicles = pgTable('vehicles', {
   fleetStatus: fleetStatus('fleet_status').notNull().default('IN_FLEET'),
   currentMileageKm: integer('current_mileage_km').notNull().default(0),
   fuelLevelPct: integer('fuel_level_pct').notNull().default(100),
+  estimatedValue: bigint('estimated_value', { mode: 'bigint' }),
   firstRegistrationDate: date('first_registration_date'),
   acquiredAt: ts('acquired_at'),
   deletedAt: ts('deleted_at'),
@@ -400,6 +401,7 @@ export const inspections = pgTable('inspections', {
   mileageKm: integer('mileage_km'),
   fuelLevelPct: integer('fuel_level_pct'),
   checklist: jsonb('checklist'),
+  zones: jsonb('zones'), // [{ code:'FRONT'|'REAR'|'LEFT'|'RIGHT'|'ROOF'|'WINDSHIELD'|'WHEELS'|'TIRES'|'INTERIOR'|'DASHBOARD'|'TRUNK'|'ACCESSORIES', status:'OK'|'DAMAGE'|'MISSING', note? }]
   location: jsonb('location'),
   customerAck: boolean('customer_ack').notNull().default(false),
   customerAckName: text('customer_ack_name'),
@@ -533,6 +535,7 @@ export const alertRules = pgTable('alert_rules', {
   scheduleKey: text('schedule_key'),
   severity: alert_severity('severity').notNull(),
   actionKind: action_kind('action_kind').notNull().default('NOTIFY'),
+  category: text('category').notNull().default('OPERATIONS'),
   dedupWindowMinutes: integer('dedup_window_minutes').notNull().default(1440),
   enabled: boolean('enabled').notNull().default(true),
   conditions: jsonb('conditions'),
@@ -543,6 +546,7 @@ export const alerts = pgTable('alerts', {
   id: uuid('id').defaultRandom().primaryKey(),
   agencyId: uuid('agency_id').notNull(),
   ruleKey: text('rule_key').notNull(),
+  category: text('category').notNull().default('OPERATIONS'), // OPERATIONS|FLEET|MAINTENANCE|FINANCIAL|CONTRACT|COMPLIANCE|SECURITY|TELEMATICS|CUSTOMER
   severity: alert_severity('severity').notNull(),
   sourceKind: text('source_kind').notNull().default('RULE'),
   entityType: text('entity_type'),
@@ -596,4 +600,188 @@ export const RLS_TABLES = [
   'contract_sequences', 'contract_templates', 'contracts', 'contract_versions', 'contract_amendments',
   'inspections', 'inspection_photos', 'damages', 'payments', 'deposits', 'deposit_charges',
   'cash_sessions', 'cleaning_tasks', 'alert_rules', 'alerts', 'approvals', 'outbox_events',
+] as const;
+
+// ═══ V1 additions ═══════════════════════════════════════════════════════════════
+
+export const vendors = pgTable('vendors', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  agencyId: uuid('agency_id').notNull(),
+  name: text('name').notNull(),
+  kind: text('kind').notNull().default('GARAGE'), // GARAGE | CLEANING | TOWING | OTHER
+  phone: text('phone'),
+  city: text('city'),
+  notes: text('notes'),
+  createdAt: ts('created_at').notNull().defaultNow(),
+}, (t) => [index('vendors_agency_idx').on(t.agencyId)]);
+
+/** Deterministic maintenance plans: mileage-based, time-based, or scheduled. */
+export const maintenancePlans = pgTable('maintenance_plans', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  agencyId: uuid('agency_id').notNull(),
+  vehicleId: uuid('vehicle_id').notNull().references(() => vehicles.id),
+  taskKind: text('task_kind').notNull(), // OIL | VT | TIRES | BRAKES | GENERAL | ...
+  basis: text('basis').notNull(), // MILEAGE | TIME | SCHEDULED
+  intervalKm: integer('interval_km'),
+  intervalDays: integer('interval_days'),
+  lastDoneKm: integer('last_done_km'),
+  lastDoneAt: ts('last_done_at'),
+  nextDueKm: integer('next_due_km'),
+  nextDueAt: ts('next_due_at'),
+  estimatedCost: bigint('estimated_cost', { mode: 'bigint' }),
+  active: boolean('active').notNull().default(true),
+  createdAt: ts('created_at').notNull().defaultNow(),
+  updatedAt: ts('updated_at').notNull().defaultNow(),
+}, (t) => [index('plans_vehicle_idx').on(t.vehicleId)]);
+
+/** Performed work: parts + labor + downtime + vendor (feeds profitability & SLA stats). */
+export const maintenanceRecords = pgTable('maintenance_records', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  agencyId: uuid('agency_id').notNull(),
+  vehicleId: uuid('vehicle_id').notNull().references(() => vehicles.id),
+  planId: uuid('plan_id'),
+  taskKind: text('task_kind').notNull(),
+  vendorId: uuid('vendor_id'),
+  vendorName: text('vendor_name'),
+  performedAt: ts('performed_at').notNull().defaultNow(),
+  mileageKm: integer('mileage_km'),
+  partsCost: bigint('parts_cost', { mode: 'bigint' }).notNull(),
+  laborCost: bigint('labor_cost', { mode: 'bigint' }).notNull(),
+  totalCost: bigint('total_cost', { mode: 'bigint' }).notNull(),
+  downtimeHours: integer('downtime_hours').notNull(),
+  windowId: uuid('window_id'),
+  notes: text('notes'),
+  invoiceObjectKey: text('invoice_object_key'),
+  createdAt: ts('created_at').notNull().defaultNow(),
+}, (t) => [index('records_vehicle_idx').on(t.vehicleId, t.performedAt)]);
+
+/** Branch transfers — recommended by the system, executed by humans (V1 §6). */
+export const vehicleTransfers = pgTable('vehicle_transfers', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  agencyId: uuid('agency_id').notNull(),
+  vehicleId: uuid('vehicle_id').notNull().references(() => vehicles.id),
+  fromBranchId: uuid('from_branch_id').notNull(),
+  toBranchId: uuid('to_branch_id').notNull(),
+  reason: text('reason').notNull(),
+  reservationId: uuid('reservation_id'),
+  status: text('status').notNull().default('RECOMMENDED'), // RECOMMENDED|APPROVED|IN_PROGRESS|DONE|CANCELLED
+  distanceKm: integer('distance_km'),
+  executedBy: uuid('executed_by'),
+  executedAt: ts('executed_at'),
+  createdAt: ts('created_at').notNull().defaultNow(),
+  updatedAt: ts('updated_at').notNull().defaultNow(),
+}, (t) => [index('transfers_status_idx').on(t.agencyId, t.status)]);
+
+export const telematicsDevices = pgTable('telematics_devices', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  agencyId: uuid('agency_id').notNull(),
+  provider: text('provider').notNull(), // MOCK | TELTONIKA | ...
+  externalId: text('external_id').notNull(),
+  vehicleId: uuid('vehicle_id').references(() => vehicles.id),
+  status: text('status').notNull().default('UNAVAILABLE'), // CONNECTED | UNAVAILABLE | MOCK
+  lastSeenAt: ts('last_seen_at'),
+  createdAt: ts('created_at').notNull().defaultNow(),
+}, (t) => [uniqueIndex('devices_provider_uq').on(t.provider, t.externalId)]);
+
+export const telematicsEvents = pgTable('telematics_events', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  agencyId: uuid('agency_id').notNull(),
+  deviceId: uuid('device_id').notNull(),
+  vehicleId: uuid('vehicle_id').notNull(),
+  eventType: text('event_type').notNull(), // POSITION|IGNITION_ON|IGNITION_OFF|MOVEMENT|STOP|GPS_LOST|BATTERY_LOW
+  payload: jsonb('payload').notNull(),     // normalized: lat,lng,speedKmh,heading,mileageKm,voltage
+  occurredAt: ts('occurred_at').notNull(),
+  providerMessageId: text('provider_message_id'),
+  createdAt: ts('created_at').notNull().defaultNow(),
+}, (t) => [
+  uniqueIndex('telematics_idempotent_uq').on(t.providerMessageId),
+  index('telematics_vehicle_time_idx').on(t.vehicleId, t.occurredAt),
+]);
+
+/** Latest known position per device — light read model for the map (rebuildable). */
+export const vehiclePositions = pgTable('vehicle_positions', {
+  vehicleId: uuid('vehicle_id').primaryKey(),
+  agencyId: uuid('agency_id').notNull(),
+  lat: text('lat').notNull(),
+  lng: text('lng').notNull(),
+  speedKmh: integer('speed_kmh').notNull().default(0),
+  heading: integer('heading'),
+  ignitionOn: boolean('ignition_on'),
+  voltage: text('voltage'),
+  fixedAt: ts('fixed_at').notNull(),
+  updatedAt: ts('updated_at').notNull().defaultNow(),
+});
+
+/** Unified document index (V1 §12): metadata + signed-URL access + expiry. */
+export const documents = pgTable('documents', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  agencyId: uuid('agency_id').notNull(),
+  kind: text('kind').notNull(), // IDENTITY|LICENSE|CONTRACT|AMENDMENT|INSURANCE|REGISTRATION|VT|INVOICE|RECEIPT|DAMAGE_EVIDENCE|PAYMENT_EVIDENCE|OTHER
+  entityType: text('entity_type').notNull(), // customer|vehicle|contract|payment|...
+  entityId: text('entity_id'),
+  objectKey: text('object_key').notNull(),
+  mimeType: text('mime_type').notNull(),
+  bytes: integer('bytes'),
+  label: text('label'),
+  expiresAt: ts('expires_at'),
+  metadata: jsonb('metadata'),
+  uploadedBy: uuid('uploaded_by'),
+  createdAt: ts('created_at').notNull().defaultNow(),
+}, (t) => [index('documents_entity_idx').on(t.agencyId, t.entityType, t.entityId)]);
+
+/** Outbound messaging queue — SIMULATED until a provider is LIVE (V1 §5). */
+export const notificationOutbox = pgTable('notification_outbox', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  agencyId: uuid('agency_id').notNull(),
+  channel: text('channel').notNull().default('WHATSAPP'),
+  template: text('template').notNull(), // RESERVATION_CONFIRMED|PICKUP_INSTRUCTIONS|DOC_REQUEST|CONTRACT_DELIVERED|PAYMENT_REMINDER|RETURN_REMINDER|EXTENSION_REQUEST|LATE_RETURN|LOCATION_REQUEST
+  toPhone: text('to_phone').notNull(),
+  payload: jsonb('payload'),
+  status: text('status').notNull().default('QUEUED'), // QUEUED|SIMULATED|SENT|FAILED
+  provider: text('provider'),
+  providerMessageId: text('provider_message_id'),
+  integrationStatus: text('integration_status').notNull().default('MOCK'),
+  relatedType: text('related_type'),
+  relatedId: text('related_id'),
+  createdBy: uuid('created_by'),
+  createdAt: ts('created_at').notNull().defaultNow(),
+}, (t) => [index('notif_status_idx').on(t.agencyId, t.status)]);
+
+/** Qualified-signature requests — provider abstracted, mode always labeled (V1 §4). */
+export const signatureRequests = pgTable('signature_requests', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  agencyId: uuid('agency_id').notNull(),
+  contractId: uuid('contract_id').notNull(),
+  contractVersionId: uuid('contract_version_id'),
+  provider: text('provider').notNull(), // MOCK | DAMANESIGN
+  mode: text('mode').notNull(),         // MOCK | LIVE
+  providerRef: text('provider_ref'),
+  signerName: text('signer_name').notNull(),
+  signerPhone: text('signer_phone'),
+  status: text('status').notNull().default('PENDING'), // PENDING|COMPLETED|FAILED|CANCELLED
+  evidenceObjectKey: text('evidence_object_key'),
+  requestedBy: uuid('requested_by'),
+  createdAt: ts('created_at').notNull().defaultNow(),
+  completedAt: ts('completed_at'),
+}, (t) => [index('sigreq_contract_idx').on(t.contractId)]);
+
+/** Compliance rule registry — source, effective date, config, enable/disable, audited (V1 §16). */
+export const complianceRules = pgTable('compliance_rules', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  agencyId: uuid('agency_id').notNull(),
+  key: text('key').notNull(),            // FLEET_MINIMUM | VEHICLE_AGE_CAP | ...
+  label: text('label').notNull(),
+  sourceRef: text('source_ref').notNull().default(''),
+  effectiveDate: date('effective_date'),
+  config: jsonb('config').notNull(),     // { minimum: 7 } / { ice: 5, hybrid: 6, ev: 7 }
+  enabled: boolean('enabled').notNull().default(false),
+  updatedBy: uuid('updated_by'),
+  createdAt: ts('created_at').notNull().defaultNow(),
+  updatedAt: ts('updated_at').notNull().defaultNow(),
+}, (t) => [uniqueIndex('compliance_rules_uq').on(t.agencyId, t.key)]);
+
+export const RLS_TABLES_V1 = [
+  'vendors', 'maintenance_plans', 'maintenance_records', 'vehicle_transfers', 'telematics_devices',
+  'telematics_events', 'vehicle_positions', 'documents', 'notification_outbox', 'signature_requests',
+  'compliance_rules',
 ] as const;

@@ -8,6 +8,11 @@ export const env = {
   chromiumExecutable: process.env.CHROMIUM_EXECUTABLE || '',
   enableScheduler: process.env.ENABLE_SCHEDULER !== 'false',
   seedPassword: process.env.SEED_PASSWORD ?? 'locaos-demo-2026',
+  damanesignApiUrl: process.env.DAMANESIGN_API_URL ?? '',
+  damanesignApiKey: process.env.DAMANESIGN_API_KEY ?? '',
+  whatsappToken: process.env.WHATSAPP_TOKEN ?? '',
+  whatsappPhoneId: process.env.WHATSAPP_PHONE_ID ?? '',
+  telematicsIngestToken: process.env.TELEMATICS_INGEST_TOKEN ?? '',
   nodeEnv: process.env.NODE_ENV ?? 'development',
 };
 export type Env = typeof env;

@@ -13,9 +13,9 @@ insurance, employees, operations, profitability — and reasons about how they r
 | Milestone | Scope | State |
 |---|---|---|
 | **0 — Architecture** | analysis, architecture, domain & database models, stack, roadmap, ADRs | Complete |
-| **0R — Research reconciliation** | full comparison of research ⇄ architecture; MVP re-cut; ADR-0010 | **Awaiting owner approval (MVP scope)** |
-| **MVP** (Phases 1–6+slices) | foundations → fleet/customers → reservations → contracts (FR/AR, Blank Slate) → inspections (offline PWA) → payments/cash reconciliation → brief | Not started |
-| **V1 — Money & channels** | CMI + Fatourati, PLBS deposits, WhatsApp, e-signature pilot, DGI-ready invoicing | Not started |
+| **0R — Research reconciliation** | full comparison of research ⇄ architecture; MVP re-cut | Approved |
+| **MVP / Phase 1** (shipped `f3b4ba8`) | foundations → fleet/customers → reservations → contracts (FR/AR, Blank Slate) → inspections (offline PWA) → payments/cash reconciliation → briefs | **Complete** |
+| **V1 — Operational intelligence** | maintenance subsystem, telematics signals, transfers, command center, reports/profitability, customer 360, documents, compliance registry, signature/messaging ports | **In review** |
 | **V2 — Fleet intelligence** | telematics/geofences, NARSA fine matcher, risk score, vehicle P&L | Not started |
 | **V3 — Prediction & copilot** | AI copilot (grounded, typed), predictive maintenance, pricing advisor, CV triage | Not started |
 

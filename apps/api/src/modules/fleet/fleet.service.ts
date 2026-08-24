@@ -1,4 +1,4 @@
-import { and, desc, eq, isNull, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import {
   checkTransition, EXCEPTIONAL_STATES, PIPELINE_STATES, type TransitionActor,
@@ -80,6 +80,8 @@ export { withTenant };
 
 export async function vehicleDetail(agencyId: string, id: string) {
   return withTenant(agencyId, async (tx) => {
+    const { contracts, customers, maintenanceRecords, reservations, payments } = await import('../../db/schema.js');
+    const { sql, gte, and: andOp, desc: descOp } = await import('drizzle-orm');
     const v = await tx.select().from(vehicles).where(and(eq(vehicles.id, id), eq(vehicles.agencyId, agencyId))).limit(1);
     if (!v[0]) return null;
     const cat = await tx.select().from(vehicleCategories).where(eq(vehicleCategories.id, v[0].categoryId)).limit(1);
@@ -88,6 +90,36 @@ export async function vehicleDetail(agencyId: string, id: string) {
     const transitions = await tx.select().from(vehicleStateTransitions)
       .where(eq(vehicleStateTransitions.vehicleId, id)).orderBy(desc(vehicleStateTransitions.createdAt)).limit(50);
     const windows = await tx.select().from(maintenanceWindows).where(eq(maintenanceWindows.vehicleId, id));
-    return { vehicle: v[0], category: cat[0], model: model[0], documents: docs, transitions, maintenanceWindows: windows };
+
+    // V1 intelligence: current rental, next reservation, maintenance history, profitability (30d)
+    const current = await tx.select({ c: contracts, firstName: customers.firstName, lastName: customers.lastName })
+      .from(contracts).innerJoin(customers, eq(customers.id, contracts.customerId))
+      .where(and(eq(contracts.vehicleId, id), inArray(contracts.status, ['ACTIVE', 'AMENDED']))).limit(1);
+    const next = await tx.select().from(reservations)
+      .where(and(eq(reservations.vehicleId, id), eq(reservations.status, 'VEHICLE_ASSIGNED'), gte(reservations.pickupAt, new Date())))
+      .orderBy(reservations.pickupAt).limit(1);
+    const history = await tx.select().from(maintenanceRecords).where(eq(maintenanceRecords.vehicleId, id))
+      .orderBy(descOp(maintenanceRecords.performedAt)).limit(10);
+    const rev30 = await tx.execute(sql`
+      select coalesce(sum(case when p.direction='IN' then coalesce(p.mad_equivalent, p.amount) else 0 end),0)::bigint as rev
+      from payments p join contracts c on c.id = p.contract_id
+      where c.vehicle_id = ${id} and p.received_at > now() - interval '30 days'`);
+    const cost30 = await tx.execute(sql`
+      select coalesce(sum(total_cost),0)::bigint as cost from maintenance_records
+      where vehicle_id = ${id} and performed_at > now() - interval '30 days'`);
+    const days30 = await tx.execute(sql`
+      select coalesce(sum(extract(epoch from (least(period_end, now()) - greatest(period_start, now() - interval '30 days')))/86400),0)::int as days
+      from contracts where vehicle_id = ${id} and status in ('ACTIVE','CLOSED','AMENDED') and period_start is not null and period_end is not null`);
+    const value = v[0].estimatedValue ?? 0n;
+    const depreciation = value / 1825n; // ~ daily linear over 5 years (centimes)
+    const revenue = BigInt((rev30 as unknown as { rows: { rev: string }[] }).rows[0]?.rev ?? '0');
+    const mcost = BigInt((cost30 as unknown as { rows: { cost: string }[] }).rows[0]?.cost ?? '0');
+    void andOp; void payments;
+
+    return { vehicle: v[0], category: cat[0], model: model[0], documents: docs, transitions, maintenanceWindows: windows,
+      currentContract: current[0] ? { id: current[0].c.id, number: current[0].c.number, customerName: `${current[0].firstName ?? ''} ${current[0].lastName ?? ''}` } : null,
+      nextReservation: next[0] ? { id: next[0].id, reference: next[0].reference, pickupAt: next[0].pickupAt.toISOString() } : null,
+      maintenanceHistory: history.map((h) => ({ id: h.id, taskKind: h.taskKind, performedAt: h.performedAt.toISOString(), totalCost: h.totalCost.toString(), vendorName: h.vendorName, downtimeHours: h.downtimeHours })),
+      profitability: { revenueMad: revenue.toString(), maintenanceMad: mcost.toString(), profitMad: (revenue - mcost - depreciation).toString(), rentedDays: Number((days30 as unknown as { rows: { days: number }[] }).rows[0]?.days ?? 0) } };
   });
 }

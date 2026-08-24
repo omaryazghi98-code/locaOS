@@ -1,68 +1,66 @@
 import { apiFetch } from '@/lib/api';
 
-interface Brief {
-  kind: string; day: string; departures: number; returns: number; utilizationPct: number; fleetSize: number;
-  vehiclesRequiringAttention: { id: string; plate: string; status: string }[];
-  criticalAlerts: Alert[]; attentionAlerts: Alert[];
-  openCashSession: { id: string; openedAt: string } | null; tomorrowDepartures: number;
-  expectedCashMad?: string; cashInTodayMad?: string; depositsHeldMad?: string;
-  overdueRentals: { id: string; plate: string }[];
+interface CC {
+  happening: { activeRentals: number; available: number; fleetSize: number; departuresToday: number; returnsToday: number; utilizationPct: number; revenue30Mad: string; outstandingMad: string };
+  wrong: { overdue: { id: string; plate: string }[]; unavailable: { id: string; plate: string; status: string }[]; openCritical: number; openHigh: number };
+  willGoWrong: { branchMismatches: { id: string; reference: string; plate: string | null }[]; unassignedTomorrow: number; docsExpiring: { type: string; n: number }[]; pendingTransfers: number };
+  actions: { priority: number; kind: string; label: string; href: string; reason: string }[];
 }
-interface Alert { id: string; severity: string; ruleKey: string; title: string; message: string }
+const mad = (v?: string) => new Intl.NumberFormat('fr-MA').format(Number(v ?? 0) / 100) + ' MAD';
 
-const mad = (v?: string) => (v == null ? '—' : new Intl.NumberFormat('fr-MA').format(Number(v) / 100) + ' MAD');
-
-export default async function Dashboard({ searchParams }: { searchParams: Promise<{ scope?: string }> }) {
-  const { scope } = await searchParams;
-  const kind = scope === 'eod' ? 'eod' : 'morning';
-  const b = await apiFetch<Brief>(`/api/ops/brief?scope=${kind}`);
-
+export default async function CommandCenter() {
+  const c = await apiFetch<CC>('/api/ops/command-center');
+  const h = c.happening;
   return (
     <div>
-      <div className="topbar">
-        <div>
-          <h1>{kind === 'morning' ? 'Brief du matin' : 'Brief de fin de journée'}</h1>
-          <div className="sub">{new Date(b.day).toLocaleDateString('fr-MA', { weekday: 'long', day: 'numeric', month: 'long' })} — Ce qui demande votre attention aujourd'hui.</div>
-        </div>
-        <div className="tabs">
-          <a href="/" className={kind === 'morning' ? 'active' : ''}>Matin</a>
-          <a href="/?scope=eod" className={kind === 'eod' ? 'active' : ''}>Fin de journée</a>
-        </div>
-      </div>
+      <div className="topbar"><div>
+        <h1>Centre de commandement</h1>
+        <div className="sub">Ce qui se passe · ce qui ne va pas · ce qui va mal tourner · quoi faire.</div>
+      </div></div>
 
       <div className="grid cards">
-        <div className="card"><div className="k">Départs aujourd'hui</div><div className="v">{b.departures}</div></div>
-        <div className="card"><div className="k">Retours aujourd'hui</div><div className="v">{b.returns}</div></div>
-        <div className="card"><div className="k">Utilisation</div><div className="v">{b.utilizationPct}%</div><div className="sub">{b.fleetSize} véhicules en flotte</div></div>
-        <div className="card"><div className="k">{kind === 'morning' ? 'Cash attendu (jour)' : 'Cash encaissé'}</div><div className="v">{mad(kind === 'morning' ? b.expectedCashMad : b.cashInTodayMad)}</div></div>
-        <div className="card"><div className="k">Cautions bloquées</div><div className="v warn">{mad(b.depositsHeldMad)}</div><div className="sub">espèces + pré-autorisations</div></div>
-        <div className="card"><div className="k">Locations en retard</div><div className={`v ${b.overdueRentals.length ? 'crit' : 'ok'}`}>{b.overdueRentals.length}</div>
-          {b.overdueRentals.length > 0 && <div className="sub">{b.overdueRentals.map((o) => o.plate).join(', ')}</div>}</div>
+        <div className="card"><div className="k">Locations actives</div><div className="v">{h.activeRentals}</div><div className="sub">{h.utilizationPct}% de la flotte ({h.fleetSize})</div></div>
+        <div className="card"><div className="k">Disponibles</div><div className="v ok">{h.available}</div></div>
+        <div className="card"><div className="k">Départs / retours (jour)</div><div className="v">{h.departuresToday} / {h.returnsToday}</div></div>
+        <div className="card"><div className="k">CA 30 j</div><div className="v">{mad(h.revenue30Mad)}</div></div>
+        <div className="card"><div className="k">Encours</div><div className={`v ${Number(h.outstandingMad) > 0 ? 'warn' : 'ok'}`}>{mad(h.outstandingMad)}</div></div>
       </div>
 
-      <h2>Critique</h2>
-      {b.criticalAlerts.length === 0 && <div className="sub">Aucune alerte critique. ✓</div>}
-      {b.criticalAlerts.map((a) => (
-        <div key={a.id} className={`alert ${a.severity}`}><div className="t">{a.title}</div><div className="m">{a.message}</div></div>
-      ))}
+      <div className="grid cols2">
+        <div>
+          <h2>⚠ Ce qui ne va pas</h2>
+          {c.wrong.overdue.length === 0 && c.wrong.unavailable.length === 0 && c.wrong.openCritical === 0 && <div className="sub">Rien de critique. ✓</div>}
+          {c.wrong.overdue.map((v) => <div key={v.id} className="alert CRITICAL"><div className="t">Retard — {v.plate}</div><div className="m">Contrat échu, véhicule non restitué</div></div>)}
+          {c.wrong.unavailable.map((v) => <div key={v.id} className="alert ATTENTION"><div className="t">{v.plate} — {v.status}</div></div>)}
+          {(c.wrong.openCritical > 0 || c.wrong.openHigh > 0) && (
+            <div className="alert ATTENTION"><div className="t">{c.wrong.openCritical} alerte(s) CRITIQUE · {c.wrong.openHigh} HAUTE</div><div className="m"><a href="/alerts">Voir le centre d'alertes</a></div></div>
+          )}
 
-      <h2>À surveiller</h2>
-      {b.attentionAlerts.length === 0 && <div className="sub">Rien à signaler.</div>}
-      {b.attentionAlerts.slice(0, 8).map((a) => (
-        <div key={a.id} className={`alert ${a.severity}`}><div className="t">{a.title}</div><div className="m">{a.message}</div></div>
-      ))}
+          <h2>🔮 Ce qui va mal tourner</h2>
+          {c.willGoWrong.branchMismatches.map((m) => (
+            <div key={m.id} className="alert ATTENTION"><div className="t">{m.plate} — requis sur une autre agence</div><div className="m">Réservation {m.reference} imminente · transfert recommandé (exécution humaine)</div></div>
+          ))}
+          {c.willGoWrong.unassignedTomorrow > 0 && <div className="alert ATTENTION"><div className="t">{c.willGoWrong.unassignedTomorrow} départ(s) ≤48h sans véhicule</div></div>}
+          {c.willGoWrong.docsExpiring.map((d) => <div key={d.type} className="alert ATTENTION"><div className="t">{d.n} document(s) {d.type} expirent sous 30 j</div></div>)}
+          {c.willGoWrong.pendingTransfers > 0 && <div className="sub">{c.willGoWrong.pendingTransfers} transfert(s) recommandé(s) en attente — voir Aujourd'hui.</div>}
+          {c.willGoWrong.branchMismatches.length === 0 && c.willGoWrong.unassignedTomorrow === 0 && c.willGoWrong.docsExpiring.length === 0 && <div className="sub">Risque anticipé: rien de signalé.</div>}
+        </div>
 
-      <h2>Véhicules nécessitant une action</h2>
-      {b.vehiclesRequiringAttention.length === 0 ? <div className="sub">Toute la flotte est prête.</div> : (
-        <table className="tbl"><thead><tr><th>Immat.</th><th>Statut</th></tr></thead>
-          <tbody>{b.vehiclesRequiringAttention.map((v) => (
-            <tr key={v.id}><td className="mono">{v.plate}</td><td><span className="pill warn">{v.status}</span></td></tr>
-          ))}</tbody></table>
-      )}
+        <div>
+          <h2>✅ Quoi faire (priorisé)</h2>
+          {c.actions.length === 0 && <div className="sub">Aucune action prioritaire.</div>}
+          {c.actions.map((a, i) => (
+            <div key={i} className={`alert ${a.priority === 1 ? 'CRITICAL' : 'ATTENTION'}`}>
+              <div className="t"><a href={a.href}>{a.label}</a></div>
+              <div className="m">{a.reason}</div>
+              <div className="sub">priorité {a.priority === 1 ? 'immédiate' : a.priority === 2 ? 'aujourd’hui' : 'cette semaine'} · {a.kind}</div>
+            </div>
+          ))}
+        </div>
+      </div>
 
-      <div className="sub" style={{ marginTop: 16 }}>
-        Demain : {b.tomorrowDepartures} départ(s) planifiés.
-        {b.openCashSession ? ' Session de caisse OUVERTE — clôture en fin de journée.' : ' Aucune session de caisse ouverte.'}
+      <div className="sub" style={{ marginTop: 14 }}>
+        Briefs: <a href="/?scope=brief-matin">matin</a> · <a href="/?scope=brief-soir">fin de journée</a> — détaillés dans « Aujourd'hui ».
       </div>
     </div>
   );

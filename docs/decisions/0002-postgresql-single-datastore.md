@@ -1,6 +1,6 @@
 # ADR-0002 — PostgreSQL as the single datastore; Prisma for schema & migrations
 
-- Status: Proposed
+- Status: Proposed — amended 2026-08-24: ORM is Drizzle (Prisma engine CDN unreachable; see ADR-0011); all other content stands.
 - Date: 2026-08-24
 
 ## Context

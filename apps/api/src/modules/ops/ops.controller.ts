@@ -76,10 +76,17 @@ export class OpsController {
         });
       }
 
+      const pendingTransfers = await tx.select({
+        t: (await import('../../db/schema.js')).vehicleTransfers, plate: vehicles.plate,
+      }).from((await import('../../db/schema.js')).vehicleTransfers)
+        .innerJoin(vehicles, eq(vehicles.id, (await import('../../db/schema.js')).vehicleTransfers.vehicleId))
+        .where(and(eq((await import('../../db/schema.js')).vehicleTransfers.agencyId, req.ctx!.agencyId),
+          inArray((await import('../../db/schema.js')).vehicleTransfers.status, ['RECOMMENDED', 'APPROVED'])));
+
       const tomorrows = await tx.select({ count: sql<number>`count(*)::int` }).from(reservations)
         .where(and(eq(reservations.agencyId, req.ctx!.agencyId), gte(reservations.pickupAt, end), lte(reservations.pickupAt, nextEnd)));
 
-      return { departures, returns, tomorrowDepartureCount: tomorrows[0]?.count ?? 0, day: start.toISOString() };
+      return { departures, returns, tomorrowDepartureCount: tomorrows[0]?.count ?? 0, pendingTransfers, day: start.toISOString() };
     });
   }
 
