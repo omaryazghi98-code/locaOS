@@ -38,21 +38,29 @@ flowchart TB
     end
 
     subgraph Future["External systems - integration status required"]
-        GPS[GPS providers - Teltonika et al. - UNAVAILABLE]
-        CMI[CMI card payments - UNAVAILABLE]
+        GPS[GPS providers - Teltonika FMB003/FMB130 - UNAVAILABLE]
+        CMI[CMI cards + Fatourati links - UNAVAILABLE]
         WA[WhatsApp Business - UNAVAILABLE]
         ESIGN[e-signature TSPs - Damanesign / Barid eSign - UNAVAILABLE]
         FLIGHT[Flight tracking - UNAVAILABLE]
+        DGI[DGI/SIMPL e-invoicing clearance - UNAVAILABLE]
+        NARSA[NARSA/ANSR fines - UNAVAILABLE]
+        FX[FX reference rates - BAM - UNAVAILABLE]
     end
 
     Owner & Desk & Accountant --> Web --> API
     Field --> Mobile --> API
     GPS -.future.-> API
-    API -.future.-> CMI & WA & ESIGN & FLIGHT
+    API -.future.-> CMI & WA & ESIGN & FLIGHT & DGI & NARSA & FX
 ```
 
 Every external system is **UNAVAILABLE** until an adapter exists and is configured with real
-credentials; the label is a runtime status, visible in the UI (§26).
+credentials; the label is a runtime status, visible in the UI (§26). Ports:
+`TelematicsProvider`, `PaymentGateway` (card + payment links), `MessagingChannel`,
+`SignatureProvider`, `FlightInfoPort`, `EInvoicingPort` (UBL/CII export → clearance),
+`FinesSource` (upload + OCR assist), `FxRateProvider`, `AiProvider` — verified statuses in
+the [verification register](../verification/register.md) and
+[research reconciliation](research-reconciliation.md) §5.
 
 ## 3. Containers
 
@@ -81,10 +89,12 @@ finance/      payments, deposits, invoices, cash sessions, reconciliation
 maintenance/  records, tasks, blocking windows
 ops/          assignments, deliveries/pickups, cleaning tasks
 alerts/       rule registry, evaluation, notifications, acknowledgement
-telematics/   [PORT] provider adapters, normalized events, geofences
+telematics/   [PORT] provider adapters, normalized events, geofences, EV events
+compliance/   configurable regulatory monitors (cahier des charges pack - off by default)
 reporting/    daily snapshots, briefs, profitability
-ai/           (Phase 10+) read-only reasoning, typed answers
-integration/  [PORTS] payment gateway, messaging, e-signature, flight info
+ai/           (later) read-only reasoning, typed answers, AiProvider port
+integration/  [PORTS] payment gateway, messaging, e-signature, flight info,
+              e-invoicing (DGI), fines source/OCR, FX rates, AI providers
 ```
 
 Rules enforced by lint: modules talk to each other only through exported application
@@ -106,11 +116,18 @@ Command → Module service (validation + invariant checks, in a DB transaction)
 
 - **VehicleMoved + status AVAILABLE → CRITICAL alert** is one *rule record*, not an
   `if` in a controller (§12).
-- Rules declare `actionKind ∈ {NOTIFY, CREATE_TASK, REQUIRE_APPROVAL}`. Any action touching
-  money/contracts/customers/third parties is `REQUIRE_APPROVAL` → creates an approval record,
-  executes nothing (§14).
+- **Derived condition layer (signals):** a continuous evaluator computes contradictions —
+  GHOST_STATE, PHANTOM_BOOKING, UNAUTHORIZED_USE, MAINTENANCE_CONFLICT, PREAUTH_EXPIRING,
+  FLEET_BELOW_MINIMUM (ADR-0010). Signals raise alerts and may *request* transitions through
+  Approvals; they never mutate vehicle status — telemetry is testimony, not verdict.
+- Rules declare `actionKind ∈ {NOTIFY, CREATE_TASK, REQUIRE_APPROVAL, SUGGESTION}`. Any
+  action touching money/contracts/customers/third parties is `REQUIRE_APPROVAL` or
+  `SUGGESTION` (a draft the human accepts) — auto-bill/auto-deduct/auto-tag/auto-contact
+  concepts from the research are converted accordingly (§14).
 - The morning-brief snapshot (§16) is a per-day/branch materialized row updated by events,
-  deterministically rebuildable — it is a cache, never a source of truth.
+  deterministically rebuildable — it is a cache, never a source of truth. It carries the
+  research's briefing shape: departures, returns, utilization, expected cash **and expected
+  deposit blocks (cautions)**, critical items.
 
 ## 6. Key runtime flows (abridged)
 
@@ -153,12 +170,27 @@ edits (§10, §11).
 reconciliation binds the paper sheet to a reservation (upgrade to full contract with the same
 number) or marks it `VOIDED(reason)` — sequence gaps auditable (§8; critical-analysis §4).
 
-### 6.6 Telematics ingestion (Phase 11+, port defined now)
+### 6.6 Telematics ingestion (V2+, port defined now)
 
 Adapter (e.g., Teltonika) authenticates device → normalizes to internal events
-(`VehicleMoved`, `IgnitionOff`, `GpsDisconnected`…) → idempotent ingestion (device message id)
-→ rule engine with hysteresis/quiescence (critical-analysis §7). Provider quirks never enter
-the domain.
+(`VehicleMoved`, `IgnitionOff`, `GpsDisconnected`, EV `SocChanged`…) → idempotent ingestion
+(device message id) → rule engine + signal evaluator with hysteresis/quiescence
+(critical-analysis §7). Provider quirks never enter the domain. Remote immobilization
+(starter-kill) is **not** an automated action ever — opt-in, human-triggered, legally
+reviewed, if approved at all (reconciliation G.5).
+
+### 6.7 Fine matching (V2, manual-assist first)
+
+Upload NARSA/ANSR fine PDFs → candidate matching against contracts by vehicle + occurred_at
+(+ GPS timestamps when live) → human confirms attribution → liability transfer documents
+drafted from structured data → invoicing. OCR is an assist layered on real samples only;
+nothing attributes a fine to a customer automatically (§14).
+
+### 6.8 Non-MAD cash
+
+EUR/USD cash accepted: cashier confirms amount + rate at entry → payment stores
+currency/rate/MAD-equivalent → cash-session count is per-currency with MAD-equivalent
+variance. No automatic rate "correction" — the rate is a human-confirmed fact of the day.
 
 ## 7. Tenancy & security architecture
 
@@ -177,6 +209,12 @@ Request → cookie session → user + active agency context
 - Photo/signature access via short-lived signed URLs scoped to object + tenant.
 - Sensitive fields (identity document numbers) encrypted at rest (pgcrypto/KMS later),
   masked in UI by default with unmask-permission + audit.
+- Bulk export of personal data is a separately permissioned, rate-limited, audited action
+  that raises a security alert (research #93). Unrecognized device/IP login → step-up
+  verification (2FA hook lands V1, research #91); out-of-hours logins alert the owner (#92).
+- CNDP layer: consent records per purpose; retention policy per data category is
+  agency-configurable; anonymization is human-triggered with audit — no hard-coded
+  durations (register #3, reconciliation C).
 
 ## 8. Offline architecture (PWA)
 

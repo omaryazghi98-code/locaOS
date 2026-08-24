@@ -28,6 +28,8 @@ Entity names marked ➕ are justified additions to the minimum list in Master In
 | **IdentityDocument** | CIN, passport, residence permit, driving license. Number, type, issue/expiry, photo refs. | Encrypted number at rest; expiry drives alerts; retention configurable (Law 09-08). |
 | **Driver** | Additional drivers attached to a contract, each with own license/identity refs. | Scoped per contract; license validity checked at attach. |
 | **CustomerFlag** (➕) | Structured reputational markers (no-show history, damage history) with evidence refs. | Creating "blacklist"-grade flags is a human-confirmed action (§14); never automatic. |
+| **ConsentRecord** (➕) | Per-purpose customer consents (GPS tracking during rental, marketing, data processing), captured at contract or intake, language, evidence ref, captured_by. | CNDP/Loi 09-08 obligations; auditable; retention per data category is agency-configurable — no hard-coded durations (register #3, #16). |
+| **CustomerRiskScore** (➕, V2) | Computed score over **objective contractual events only** (late returns, unpaid fines, damage, no-shows): inputs, version, explanation retained. | Transparent + explainable (CNDP); used for *suggestions* (deposit sizing, upsell) — never auto-blacklisting or auto-pricing (reconciliation G.6). |
 
 ## 3. Fleet
 
@@ -35,8 +37,10 @@ Entity names marked ➕ are justified additions to the minimum list in Master In
 |---|---|---|
 | **VehicleCategory** | Commercial class (economy, SUV, 7-places…) with default pricing refs. | Agency-scoped. |
 | **VehicleModel** (➕) | Make/model/year/trim normalization. | Fuel type incl. EV/hybrid fields (battery capacity) for later phases. |
-| **Vehicle** | Physical asset: plate, VIN, category, model, branch, mileage, fuel, `operationalStatus`, `fleetStatus` (IN_FLEET/FOR_SALE/SOLD/RETIRED), plate documents. | Status mutated **only** through the state machine service. |
-| **VehicleStateTransition** | Append-only transition log: from, to, actor, reason, source ref (contract/reservation/maintenance/event). | One row per legal transition. |
+| **Vehicle** | Physical asset: plate, VIN, category, model, branch, mileage, fuel, `operationalStatus`, `fleetStatus` (IN_FLEET/FOR_SALE/SOLD/RETIRED), first registration date (age-cap compliance input), plate documents. | Status mutated **only** through the state machine service. |
+| **VehicleStateTransition** | Append-only transition log: from, to, actor, reason, source ref (contract/reservation/maintenance/event), interrupted-pipeline snapshot for exceptional states. | One row per legal transition. |
+| **VehicleSignal** (➕, ADR-0010) | Derived condition layer — continuously evaluated contradictions and predicates: GHOST_STATE (movement while AVAILABLE), PHANTOM_BOOKING (RENTED but stationary at agency), UNAUTHORIZED_USE (moving after contract end), MAINTENANCE_CONFLICT (reserved + maintenance trigger), PREAUTH_EXPIRING, FLEET_BELOW_MINIMUM, UTILIZATION_STRESS. | **Never mutates vehicle status.** A signal raises alerts and may request a transition through an Approval (§14). Cleared when its predicate stops holding. |
+| **ComplianceRuleSet** (➕) | Per-agency configurable regulatory monitors from the cahier des charges: min fleet size (default 7), vehicle age caps by energy (ICE 5 / hybrid 6 / EV 7 years), corporate-entity status. | Every value configurable; labeled "secondary-source — verify with your accountant" (register #15). OFF-by-default until primary source verified. |
 | **VehicleDocument** | Registration (carte grise), VT (visite technique), insurance link, vignette. Expiry dates. | Expiry → configurable alert lead times (VT periodicity is data, not code — register #5). |
 | **InsurancePolicy** | Policy per vehicle/fleet: insurer, coverage, dates, franchise amounts. | Status changes audited; never altered by automation. |
 
@@ -71,7 +75,7 @@ stateDiagram-v2
     UNAVAILABLE --> AVAILABLE: docs restored
 ```
 
-Rules (see critical-analysis §2):
+Rules (see critical-analysis §2 and ADR-0010):
 
 - `ANY` exceptional states preserve the pipeline state they interrupted in the transition
   record; resolution must state the exit target explicitly (no silent `→ AVAILABLE`).
@@ -79,6 +83,9 @@ Rules (see critical-analysis §2):
 - `RESERVED` entered only by the reservation service inside the preparation window.
 - Every transition = 1 `VehicleStateTransition` row + 1 `AuditEvent`; guards run in the
   domain package (pure TS), applied transactionally by the fleet module.
+- Contradictions (GHOST STATE, MAINTENANCE CONFLICT, phantom booking, unauthorized use per
+  the research) are **VehicleSignals**, not states: telemetry is testimony, not verdict;
+  signals alert and can request human-approved transitions but never mutate status.
 
 ## 4. Reservations & operations
 
@@ -100,7 +107,8 @@ Rules (see critical-analysis §2):
 | **ContractVersion** | Immutable snapshot of full contract content per template; superseded versions retained. | Regeneration = new version, never overwrite. |
 | **ContractAmendment** | Structured change record: vehicle replacement, period change, driver added, price revision — each referencing cause + approvals. | Amendments produce new versions; price changes require permission + reason. |
 | **ContractTemplate** (➕) | Versioned, language-specific (FR/AR/EN) structured template — field schema + layout, not free HTML. | Contract content generated from structured data; never hand-assembled blobs (§8). |
-| **Signature** (➕) | Captured signature refs per signatory role (customer, agent) with timestamp + evidence (hash of signed content). | Handwritten image first; qualified e-signature is a later port (register #6). |
+| **Signature** (➕) | Captured signature refs per signatory role (customer, agent) with timestamp + evidence (hash of signed content). | Handwritten image first; qualified e-signature (Damanesign/Barid eSign port) is a V1 pilot — "exact legal weight as wet-ink" is a research overstatement, probative presumption is the accurate claim (register #6). |
+| Contract content blocks (➕, structured) | `insurance` (franchise amount, CDW/Super CDW, exclusions: tires/glass/undercarriage → mapped to inspection zones), `crossBorderAuthorization` (Ceuta/Melilla/Tanger Med flags + Admission Temporaire ref), `consent` (CNDP purposes), `driverEligibility` (age per category, license held ≥ 2 years — configurable industry-practice rules, expiry-during-rental check). | Blocks keep contracts queryable and feed downstream workflows (inspection checklist zones, geofence rules V2). |
 
 ## 6. Inspections
 
@@ -114,10 +122,10 @@ Rules (see critical-analysis §2):
 
 | Entity | Purpose | Notes / invariants |
 |---|---|---|
-| **Payment** | Money movement: method (CASH/CARD/TRANSFER/ONLINE/CHEQUE?), direction, amount (int centimes), currency, actor, refs (contract/reservation/invoice/fine), provider ref. | **Append-only.** Corrections = reversal Payment linked to original. Every mutation audited (§10). |
-| **Deposit** | Deposit plan per contract: amount, method (cash held / card pre-auth / bank), status `PLANNED → HELD/PRE_AUTHORIZED → RELEASED → PARTIALLY_CHARGED → SETTLED`. | Charges against deposit require human confirmation + link to damages/charges. |
+| **Payment** | Money movement: method (CASH/CARD/TRANSFER/ONLINE/FATOURATI_LINK later), direction, amount (int centimes) + currency (MAD default; **EUR/USD cash accepted** — rate + MAD equivalent recorded at entry, rate source configurable, BAM reference provider V1), actor, refs (contract/reservation/invoice/fine), provider ref. | **Append-only.** Corrections = reversal Payment linked to original. Every mutation audited (§10). FX "auto-correction" (research alert #85) rejected — conversion is confirmed by a human at entry. |
+| **Deposit** | Deposit plan per contract: amount, method (cash held / card pre-auth (CMI PLBS provider ref) / bank), `preauth_expires_at` tracking, status `PLANNED → HELD/PRE_AUTHORIZED → RELEASED → PARTIALLY_CHARGED → SETTLED`. | Charges against deposit require human confirmation + link to damages/charges. Pre-authorization expiring before rental end raises a signal (research alert #36). |
 | **Invoice** | Formal document with lines (rental, extras, damages, fines, fuel); numbering per agency; PDF snapshot. | Linked payments; DGI compliance rules deferred — configurable (register #8). |
-| **Fine** | Traffic fine on agency-owned vehicle: source ref, date, amount, status `RECEIVED → ATTRIBUTED → INVOICED → PAID/DISPUTED`. | Attribution to customer is evidence-based, human-confirmed (§14). |
+| **Fine** | Traffic fine on agency-owned vehicle: source document (NARSA/ANSR PDF upload, object key), occurred_at, amount, status `RECEIVED → MATCHED → ATTRIBUTED → INVOICED → PAID/DISPUTED`. | Matching to contract/driver is evidence-assisted (contract period, GPS timestamps when live), **human-confirmed** (§14); OCR is a later assist (V2 manual-assist first — reconciliation G.7). |
 | **CashSession** (➕) | Drawer session per branch/employee: opened_at/closed_at, expected cash (derived from Payments), counted denominations, variance + explanation. | Answers "how much should be in the drawer / who handled it" (§10). |
 | **LedgerEntry** (➕) | Derived double-entry-style projection for reporting; rebuildable from Payments. | Reporting aid — Payments remain the source of truth. |
 
@@ -125,7 +133,7 @@ Rules (see critical-analysis §2):
 
 | Entity | Purpose | Notes |
 |---|---|---|
-| **MaintenanceRecord** | Actual work performed: type, garage (internal/external), cost, mileage, downtime, linked vehicle documents renewed. | Costs feed profitability + downtime analytics. |
+| **MaintenanceRecord** | Actual work performed: type, garage (internal/external), cost, mileage, downtime, linked vehicle documents renewed. Garage/vendor SLA stats (duration vs task kind) accumulate for slow-vendor flagging (research hidden #18). | Costs feed profitability + downtime analytics. |
 | **MaintenanceTask** | Planned/upcoming work with **blocking calendar window** (exclusion-constrained like reservations). | The conflict the reservation service must respect (§7). |
 
 ## 9. Telematics (port defined, adapters later)
@@ -134,24 +142,24 @@ Rules (see critical-analysis §2):
 |---|---|---|
 | **GpsDevice** | Device registry: provider, identifier, binding to vehicle (history-aware). | Provider-agnostic fields only. |
 | **GpsPosition** | Normalized position fix (time, point, speed, heading, validity flags). | Raw payloads retained in object store for replay. |
-| **TelematicsEvent** | Normalized domain events: VehicleMoved/Stopped, IgnitionOn/Off, GpsDisconnected, BatteryVoltageChanged, MileageChanged, HarshBraking, CrashDetected, GeofenceEntered/Exited. | Ingestion idempotent per provider message id (§13). |
+| **TelematicsEvent** | Normalized domain events: VehicleMoved/Stopped, IgnitionOn/Off, GpsDisconnected, BatteryVoltageChanged, MileageChanged, HarshBraking, CrashDetected, GeofenceEntered/Exited + EV events (SocChanged, ChargingState, ChargingFault). | Ingestion idempotent per provider message id (§13). |
 | **Geofence** | Named area (home branch, airport, border zones) used by rules. | Rules evaluate events × geofences — no provider coupling. |
 
 ## 10. Alerts, notifications, AI
 
 | Entity | Purpose | Notes |
 |---|---|---|
-| **AlertRule** | Declarative rule: event type, JSON condition, severity, dedup window, actionKind (NOTIFY / CREATE_TASK / REQUIRE_APPROVAL). | Versioned data; system rules seeded; user-editable subset (§12). |
+| **AlertRule** | Declarative rule: event type, JSON condition, severity, dedup window, actionKind (NOTIFY / CREATE_TASK / REQUIRE_APPROVAL / SUGGESTION). Research's 100-rule matrix is the first rule pack — classified into events/rules/signals/jobs/notifications/AI insights (see [research reconciliation](research-reconciliation.md) §3); auto-bill/auto-tag/auto-contact concepts are converted to SUGGESTION/REQUIRE_APPROVAL. | Versioned data; system rules seeded; user-editable subset (§12). |
 | **Alert** | Raised instance: rule ref, evidence refs, severity, status `OPEN → ACKNOWLEDGED → RESOLVED(suppressed)`, assignee, resolution note. | Deduped within window; never auto-resolved silently. |
 | **Approval** (➕) | Human-confirmation record for REQUIRE_APPROVAL actions: requested action JSON, approver, decision, timestamp. | The §14 gate, persisted. |
 | **Notification** | Outbound message: channel (in-app/SMS/WhatsApp/email — port), template ref, status. | Channel adapters carry integration status labels. |
-| **AiInsight** | Phase 10+: typed answer objects (FACT/INFERENCE/RECOMMENDATION/UNCERTAINTY) with record citations + confidence. | Read-only inputs; no write path (ADR-0009). |
+| **AiInsight** | V3 (AI copilot): typed answer objects (FACT/INFERENCE/RECOMMENDATION/UNCERTAINTY) with record citations + confidence. | Read-only inputs; no write path (ADR-0009). |
 
 ## 11. Reporting & snapshots
 
 | Entity | Purpose |
 |---|---|
-| **DailyOpsSnapshot** (➕) | Per agency/branch/day: departures, returns, utilization, expected cash, exception counts. Materialized from events; rebuildable — powers the morning brief (§16). |
+| **DailyOpsSnapshot** (➕) | Per agency/branch/day: departures, returns, utilization, **expected cash + expected deposit blocks (cautions)**, exception counts. Materialized from events; rebuildable — powers the morning/end-of-day briefs (§16, research briefing format). |
 | **VehicleDayFact** (➕) | Per vehicle/day state intervals + revenue attribution — utilization/downtime analytics without heavy scans. |
 
 ## 12. Cross-cutting invariants (non-negotiable)

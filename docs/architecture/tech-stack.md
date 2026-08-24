@@ -41,7 +41,7 @@ microservices decision until a real boundary appears (§21).
 The product's hardest requirements are *integrity* requirements: no double bookings
 (exclusion constraints), tenant isolation (RLS), append-only financial/audit history,
 transactional outbox for events, materialized daily snapshots. Postgres does all of this
-natively; a second datastore before Phase 8 would be speculative.
+natively; a second datastore before the MVP ships would be speculative.
 
 ### Sessions over JWTs; RBAC over roles-only
 Opaque server-side sessions are revocable (shared devices, staff turnover), avoid
@@ -64,11 +64,19 @@ deterministic-only Latin documents.
 ## Explicitly deferred
 
 - Redis, Kafka, microservices, Kubernetes — until a measured need (ADR-0001).
-- CMI payment adapter — design the `PaymentGateway` port now, implement when merchant
-  credentials exist; label status UNAVAILABLE (§26).
-- AI provider — the reasoning layer has no write path (ADR-0009); provider choice is a
-  Phase 10 decision, not an architecture commitment.
-- WhatsApp Business Cloud API — cost/policy review required first (register #12).
+- CMI payment adapter (card + Fatourati links) — `PaymentGateway` port designed now,
+  implemented in V1 when merchant facts exist; label status UNAVAILABLE (§26).
+- DGI/SIMPL e-invoicing — invoice mandatory-mentions validation (Art. 145 CGI) in MVP;
+  `EInvoicingPort` (UBL/CII export, then clearance) in V1+; PME obligation wave Jan 2027
+  (register #8) is the real deadline driver, not 2026.
+- NARSA/ANSR fines — `FinesSource` port + manual matching first (V2); OCR assist only after
+  real document samples exist (reconciliation G.7).
+- AI provider — behind an `AiProvider` port (ADR-0009: grounded RAG over tenancy-scoped
+  services, typed answers, no write path; the research's "fine-tuned LLM" is deliberately
+  diverged from — reconciliation §4); provider choice at build time, never couples the core.
+- FX reference rates (BAM) — `FxRateProvider` port; MVP uses human-confirmed manual rates.
+- WhatsApp Business Cloud API — V1/V2 pending cost/policy review (register #12, G.4).
+- Qualified e-signature (Damanesign/Barid eSign) — `SignatureProvider` port; V1 pilot (G.3).
 
 ## Security baseline (applies to every choice above)
 

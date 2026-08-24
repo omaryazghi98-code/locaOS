@@ -1,37 +1,38 @@
-# Research Material — Status
+# Research Material
 
-## Expected document
+## Source document
 
-The Master Agent Instructions declare this file as the product source of truth:
+[`moroccan-rental-platform-research.md`](moroccan-rental-platform-research.md) —
+"Next-Generation Car Rental Management Platform for Morocco: 2026 Product Architecture",
+with 40 cited sources. Supplied 2026-08-24 (was missing during initial Phase 0 — see
+[reconciliation](../architecture/research-reconciliation.md)).
 
-```
-docs/research/moroccan-rental-platform-research.md
-```
+## How to treat this document
 
-**This document is not present in the repository** (verified 2026-08-24, initial commit `8782591`). The repo contains only a stub `README.md`.
+1. **Product research with citations, not verified truth.** Every legal, regulatory,
+   financial, API, or technical claim is classified in the
+   [verification register](../verification/register.md). Research citations count as
+   *secondary sources* — a claim is never promoted past PARTIALLY VERIFIED on research
+   citation alone.
+2. **Preserve terminology and intent.** Research terms map to locaOS terms in the
+   reconciliation §1.3 crosswalk (caution → Deposit, Blank Slate → blank contract, ghost
+   state → VehicleSignal GHOST_STATE, franchise → deductible, visite technique → VT document
+   type, PLBS → card preauth, MRE, Admission Temporaire, Constat Amiable…). Never "fix" the
+   research silently; divergences are stated with reasons in the reconciliation document.
+3. **Safety over vision.** Research "system actions" that auto-bill, auto-deduct, auto-tag,
+   or auto-contact are converted to human-confirmed actions (project brief §14); some
+   concepts are rejected outright with reasons (reconciliation §3).
+4. **Nothing is integrated by naming it.** CMI, Fatourati, DGI, NARSA, Damanesign,
+   Barid eSign, WhatsApp, Teltonika, flight APIs… all ship behind ports with honest status
+   labels until real implementations exist (brief §26).
 
-## Consequences
+## Companion analyses
 
-1. Phase 0 architecture was derived from the Master Agent Instructions themselves, which
-   enumerate the research document's coverage areas (§1) but not its contents or claims.
-2. **Every claim that would have originated in the research document is treated as
-   UNVERIFIED.** No research-derived legal, regulatory, financial, or API claim has been
-   encoded as a business rule.
-3. Where Morocco-specific facts were needed to make architectural decisions, independent
-   verification was performed and recorded in
-   [`docs/verification/register.md`](../verification/register.md).
-
-## Requested action
-
-The research document (or a link to it) must be supplied by the product owner. Once added:
-
-- Re-run the Phase 0 critical analysis against the actual text
-  ([`docs/architecture/critical-analysis.md`](../architecture/critical-analysis.md) §1).
-- Move each verified/refuted claim into the verification register.
-- Amend affected ADRs rather than silently absorbing contradictions.
+- [Research reconciliation](../architecture/research-reconciliation.md) — the full
+  Phase 0 ⇄ research comparison, MVP recommendation, killer-feature ranking, open decisions.
+- [Verification register](../verification/register.md) — claim-by-claim status with sources.
 
 ## Rules for this directory
 
-- Never fabricate research content to fill the gap.
-- Never cite the missing document as evidence for a decision.
-- Add supplementary research notes here as `notes/<topic>.md` with source links.
+- Never edit the research document; add supplementary notes as `notes/<topic>.md` with
+  source links.

@@ -16,7 +16,8 @@ decision writes a new ADR that links back.
 | [0006](0006-authn-authz-sessions-rbac.md) | Session-cookie authn + server-side RBAC permission matrix | Proposed |
 | [0007](0007-contract-engine-structured-pdf.md) | Contract engine: structured data → templates → HTML→PDF (Chromium) | Proposed |
 | [0008](0008-financial-integrity-ledger.md) | Financial integrity: integer money, append-only records, reversal corrections, cash sessions | Proposed |
-| [0009](0009-alerts-telematics-ai-boundaries.md) | Alert rules engine, telematics port, read-only AI layer | Proposed |
+| [0009](0009-alerts-telematics-ai-boundaries.md) | Alert rules engine, telematics port, read-only AI layer | Proposed (amended 2026-08-24) |
+| [0010](0010-vehicle-state-machine-signals.md) | Vehicle status: one state machine + derived condition layer (signals) | Proposed |
 
 ## Template
 

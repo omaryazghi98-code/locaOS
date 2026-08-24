@@ -1,6 +1,6 @@
 # ADR-0008 — Financial integrity: integer money, append-only records, reversal corrections, cash sessions
 
-- Status: Proposed
+- Status: Proposed — amended 2026-08-24 after research reconciliation
 - Date: 2026-08-24
 
 ## Context
@@ -44,3 +44,20 @@ discounts.
   ("never silently modify") and reconciliation math; rejected.
 - **Decimal columns / Money class with fractions** — centimes integers are simpler and exact;
   rounding policy lives in one formatting module.
+
+## Amendment (research reconciliation, 2026-08-24)
+
+- **Multi-currency cash (added):** MRE/tourist reality — EUR/USD cash accepted; payment
+  stores currency + human-confirmed rate + MAD equivalent; cash sessions count per currency
+  with MAD-equivalent variance. The research's "auto-correct to BAM rate" (alert #85) is
+  rejected — the rate is a human-confirmed fact of the day; a `FxRateProvider` (BAM
+  reference) may *suggest* rates from V1.
+- **Deposits:** card pre-authorization carries provider (CMI PLBS) ref and
+  `preauth_expires_at` (research #36) feeding the signal layer; preauth renewal is a
+  suggested task, never automatic.
+- **Invoices:** Art. 145 CGI mentions validation added (VERIFIED, register #18); DGI
+  e-invoicing (clearance, UBL/CII) is a V1+ `EInvoicingPort` — PME wave Jan 2027
+  (register #8); format configurable, no hard-coded spec assumptions.
+- **Recurring research concepts converted per §14:** auto-bill/auto-deduct (fuel, missing
+  accessories, extra mileage, late penalties, fines) → draft charges requiring human
+  confirmation; the daily reconciliation protocol is confirmed as the MVP's killer feature.

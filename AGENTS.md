@@ -7,9 +7,12 @@ frontend — is the architecture.
 
 **Read before working:** [`docs/architecture/proposed-architecture.md`](docs/architecture/proposed-architecture.md),
 the [domain model](docs/architecture/domain-model.md), the [ADR index](docs/decisions/README.md),
-and the [roadmap phase you're in](docs/architecture/roadmap.md).
-**Note:** the product research document is **missing** — see
-[`docs/research/README.md`](docs/research/README.md). Never cite it or fabricate its contents.
+the [roadmap version you're in](docs/architecture/roadmap.md), and — for anything the research
+touches — [`docs/architecture/research-reconciliation.md`](docs/architecture/research-reconciliation.md).
+The research document is present at
+[`docs/research/moroccan-rental-platform-research.md`](docs/research/moroccan-rental-platform-research.md):
+read it as product research with citations, **never as verified truth** — its claims are
+classified in the [verification register](docs/verification/register.md).
 
 ## Non-negotiable rules
 
@@ -26,10 +29,18 @@ and the [roadmap phase you're in](docs/architecture/roadmap.md).
    audited; sensitive ones require a reason.
 5. **High-impact actions are human-confirmed.** DETECT → EXPLAIN → ASK. Nothing
    auto-immobilizes, auto-charges, auto-blacklists, auto-contacts, or modifies contracts
-   without an Approval record. (§14 of the product brief.)
+   without an Approval record. (§14 of the product brief.) Research "system actions" that
+   auto-bill, auto-deduct deposits, auto-tag customers, or auto-send legal statements are
+   converted to `SUGGESTION`/`REQUIRE_APPROVAL` — see the conversion list in the
+   [research reconciliation](docs/architecture/research-reconciliation.md) §3. Permanently
+   rejected: automated starter-kill/immobilization, silent night-profiling of customers,
+   employee behavioral/fatigue profiling. Telemetry never mutates vehicle status directly
+   (ADR-0010 signals).
 6. **No dangerous legal encoding.** Legal/regulatory claims are tracked in
    [`docs/verification/register.md`](docs/verification/register.md); UNVERIFIED claims must
    not become hard-coded business rules — make them configuration and label the assumption.
+   Research claims are secondary sources: distinguish confirmed law vs industry practice vs
+   recommendation vs hypothesis (reconciliation §5/§C).
 7. **Honest integrations.** External systems (CMI, GPS providers, WhatsApp, e-signature,
    flights) exist only as ports + adapters that self-declare status
    MOCK/SIMULATED/UNAVAILABLE/CONNECTED, visible in the UI. Never silently simulate real
@@ -71,6 +82,9 @@ colocated; migrations forward-only, never edit applied migrations.
 
 ## Current status
 
-**Phase 0 (architecture) — in review. No application code exists yet.** Phase 1
-(foundations: scaffold, CI, IAM, tenancy, audit, web shell) starts only after review approval
-and, ideally, after the research document is supplied.
+**Phase 0 (architecture) — reconciled with the research document (2026-08-24); awaiting
+product-owner approval of the MVP scope (open decision G.1). No application code exists
+yet.** Phase 1 (foundations) starts only after MVP approval. The research terminology
+crosswalk lives in the reconciliation §1.3 — preserve research terms (caution, Blank Slate,
+ghost state, franchise, visite technique, vignette, Admission Temporaire, MRE, PLBS,
+Constat Amiable) in UI copy and code comments.

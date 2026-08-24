@@ -10,20 +10,23 @@ insurance, employees, operations, profitability — and reasons about how they r
 
 ## Status
 
-| Phase | Scope | State |
+| Milestone | Scope | State |
 |---|---|---|
-| **0 — Architecture** | analysis, architecture, domain & database models, stack, roadmap, ADRs | **In review** |
-| 1 — Foundations | scaffold, CI, IAM, tenancy, audit, web shell | Not started |
-| 2–9 | fleet → customers → reservations → contracts → inspections → finance → maintenance → alerts → reporting | Not started |
-| 10+ | GPS, WhatsApp, AI copilot, predictive maintenance, dynamic pricing | Gated by ADRs |
+| **0 — Architecture** | analysis, architecture, domain & database models, stack, roadmap, ADRs | Complete |
+| **0R — Research reconciliation** | full comparison of research ⇄ architecture; MVP re-cut; ADR-0010 | **Awaiting owner approval (MVP scope)** |
+| **MVP** (Phases 1–6+slices) | foundations → fleet/customers → reservations → contracts (FR/AR, Blank Slate) → inspections (offline PWA) → payments/cash reconciliation → brief | Not started |
+| **V1 — Money & channels** | CMI + Fatourati, PLBS deposits, WhatsApp, e-signature pilot, DGI-ready invoicing | Not started |
+| **V2 — Fleet intelligence** | telematics/geofences, NARSA fine matcher, risk score, vehicle P&L | Not started |
+| **V3 — Prediction & copilot** | AI copilot (grounded, typed), predictive maintenance, pricing advisor, CV triage | Not started |
 
-⚠️ **The product research document
-([`docs/research/`](docs/research/moroccan-rental-platform-research.md)) is missing from this
-repository.** Phase 0 was derived from the project brief; every research-derived claim is
-treated as unverified. See [`docs/research/README.md`](docs/research/README.md).
+The product research document is present at
+[`docs/research/moroccan-rental-platform-research.md`](docs/research/moroccan-rental-platform-research.md)
+and has been reconciled claim-by-claim — see
+[`docs/architecture/research-reconciliation.md`](docs/architecture/research-reconciliation.md).
 
 ## Documentation map
 
+- [Research reconciliation](docs/architecture/research-reconciliation.md) — research ⇄ architecture: what changed, MVP, open decisions
 - [Critical analysis](docs/architecture/critical-analysis.md) — contradictions, assumptions, questionable requirements
 - [Proposed architecture](docs/architecture/proposed-architecture.md) — context, containers, modules, runtime flows
 - [Domain model](docs/architecture/domain-model.md) — entities, lifecycles, invariants

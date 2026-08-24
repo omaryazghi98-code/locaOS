@@ -1,6 +1,6 @@
 # ADR-0009 — Alert rules engine, telematics port, read-only AI layer
 
-- Status: Proposed
+- Status: Proposed — amended 2026-08-24 after research reconciliation
 - Date: 2026-08-24
 
 ## Context
@@ -27,7 +27,7 @@ knows zero provider specifics; every adapter exposes its integration status
 hysteresis (distance × duration × ignition) and evidence-stating language — GPS is
 testimony, not verdict (critical-analysis §7).
 
-**AI = read-only reasoner with typed answers.** The AI layer (Phase 10+) queries data through
+**AI = read-only reasoner with typed answers.** The AI layer (V3; port exists from the start) queries data through
 the same tenancy-scoped application services; it has no write path to domain data. Responses
 are structured blocks typed FACT / INFERENCE / RECOMMENDATION / UNCERTAINTY, where every FACT
 cites record IDs; confidence is explicit; no data is fabricated because answers are grounded
@@ -47,3 +47,20 @@ in retrieved records. Provider choice is deferred to its own ADR.
   conditions only; a DSL can evolve later above the same records.
 - **AI with write access ("agentic ops")** — violates §14 until explicitly designed,
   reviewed, and authorized; rejected for the foreseeable roadmap.
+
+## Amendment (research reconciliation, 2026-08-24)
+
+- The research's 100-rule matrix + 20 hidden problems are classified into the six buckets
+  (domain events / rules / signals / scheduled jobs / notification templates / AI insights) —
+  see [reconciliation](../architecture/research-reconciliation.md) §3; the matrix becomes the
+  first seeded rule pack, not new architecture.
+- `actionKind` gains `SUGGESTION` (draft a human accepts) — research auto-bill/auto-tag/
+  auto-contact concepts converted per §14; rejected concepts recorded with reasons
+  (silent night profiling, employee fatigue profiling, automated starter-kill).
+- Signals live in the derived-condition layer of ADR-0010, feeding this engine's alerts.
+- **AI:** an `AiProvider` port keeps the core provider-agnostic; the research's "fine-tuned
+  LLM on the agency database" is replaced by per-tenant grounded RAG + tool calls over the
+  same tenancy-scoped application services (freshness, CNDP isolation, cost, lock-in —
+  register #30); the research's example AI actions become drafted Approval requests.
+  Typed answers (FACT/INFERENCE/RECOMMENDATION/UNCERTAINTY), record-ID citations, and
+  confidence are unchanged and match the research's example output shape.

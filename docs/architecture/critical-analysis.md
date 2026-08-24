@@ -6,19 +6,17 @@ external verification ([verification register](../verification/register.md)).
 
 ---
 
-## 1. The source-of-truth research document is missing — blocking finding
+## 1. The source-of-truth research document is missing — ~~blocking finding~~ RESOLVED 2026-08-24
 
-`docs/research/moroccan-rental-platform-research.md` does not exist in the repository
-(see [`docs/research/README.md`](../research/README.md)). The instructions require reading it
-before architectural decisions and treating its claims as research, not truth. Consequence:
-
-- Phase 0 proceeds from the Master Agent Instructions alone.
-- **No research-derived claim is treated as verified.** All 14 claims currently tracked in the
-  verification register that would have come from the research remain UNVERIFIED.
-- Product decisions below are proposals explicitly staged for owner review — which §28
-  ("present the architecture for review") already mandates.
-
-This must be resolved before Phase 1 exits its first milestone.
+`docs/research/moroccan-rental-platform-research.md` was absent when Phase 0 was written
+(see [`docs/research/README.md`](../research/README.md)), so Phase 0 proceeded from the
+Master Agent Instructions alone. The document has now been supplied and read in full; the
+full comparison lives in
+[`research-reconciliation.md`](research-reconciliation.md) (what changed / was confirmed /
+remains uncertain / missing requirements / MVP & V1–V3 / open decisions). The findings below
+stand as originally written; where the research altered a conclusion, the reconciliation
+document states it explicitly (notably: §2 formalized as ADR-0010 state machine + signals;
+§12 added FX/multi-currency; the alert matrix classified in reconciliation §3).
 
 ## 2. Vehicle state machine — the 14-state list overloads one axis
 

@@ -1,129 +1,109 @@
-# locaOS — Phased Roadmap (Phase 0 proposal)
+# locaOS — Roadmap (post-research-reconciliation)
 
-Sequencing follows Master Instructions §3 (foundations → advanced) and §25 (feature =
-DB + backend + logic + UI + validation + error handling + tests). **A phase exits only when
-its acceptance criteria pass; advanced systems stay out until their phase.**
+Cut into a shippable **MVP** and versioned increments V1–V3, reconciled with the research
+priority matrix ([reconciliation](research-reconciliation.md) §E–F). A scope item exits only
+when its acceptance criteria pass; advanced systems stay out until their version. Internal
+phase numbers (1–9) remain for engineering sequencing inside the MVP.
 
 ---
 
-## Phase 0 — Architecture (this document set) `IN REVIEW`
+## MVP — "Run the desk, the paper, and the drawer" (Phases 1–6 + slices)
 
-Deliverables: critical analysis, architecture, domain model, database model, app structure,
-tech stack, roadmap, ADRs 0001–0009, AGENTS.md, copilot-instructions, README.
+Small enough to ship, strong enough to sell: reservations → contracts → inspections → money,
+with the cash-reconciliation moat (killer feature #1) included. Zero external dependencies.
 
-**Exit criteria:** owner review complete; open decisions below resolved or explicitly
-deferred; **research document supplied** (blocking, critical-analysis §1).
+### Phase 1 — Foundations
+Monorepo scaffold, Docker Compose, CI, Postgres + Prisma, migrations, Agency/Branch/User/
+Role/Permission/Session (Owner/Manager/Agent/Field agent/Accountant/Mechanic seed), login
+(argon2id sessions), RBAC guards, tenant transaction wrapper + RLS, audit log skeleton, web
+shell (FR default, AR RTL; EN UI in V1).
+**Exit:** multi-agency login; cross-tenant tests pass at both layers; permission denials
+tested; auth events audited; seeded demo agency; CI green.
 
-Open decisions for review:
-1. Tech stack ratification (ADR-0001..0009).
-2. Vehicle status: single-enum now vs two-axis (physical × pipeline) — we propose single enum
-   with documented precedence, revisit at GPS phase (critical-analysis §2).
-3. Hosting region + CNDP formalities stance (register #3/#4) — deployment-time decision,
-   documented not hardcoded.
-4. PWA vs native for field operations (assumption A4).
+### Phase 2 — Fleet & customers
+Vehicles via state-machine service (14 states + transitions + audit, ADR-0010), categories,
+models, vehicle documents (VT/insurance/vignette expiries → first alert rules), customers +
+encrypted identity documents + human-confirmed flags, consent records (CNDP), compliance
+pack (fleet-size/age-cap monitors — OFF by default, G.2), search-first dense UI.
+**Exit:** illegal transitions rejected with reasons; legal transitions audited; expiry rules
+fire; identity numbers encrypted + masked; tenancy tests extended.
 
-## Phase 1 — Foundations
+### Phase 3 — Reservations
+Reservation lifecycle, versioned quotes with **floor-price warning** (MAP), calendar
+(vehicle/branch/category), exclusion-constraint conflict detection, category→vehicle
+assignment with retry, cancellation/no-show, employee assignments + conflict checks, flight
+fields captured (no tracking yet).
+**Exit:** concurrent booking race test (one txn loses cleanly → 409 with conflict list);
+maintenance windows block reservations; readiness checklist generated; E2E booking suite.
 
-Scope: monorepo scaffold, Docker Compose, CI pipeline, Postgres + Prisma, migrations tooling,
-Agency/Branch/User/Role/Permission/Session, login (argon2id sessions), RBAC guards, tenant
-transaction wrapper + RLS, audit log skeleton, web shell (layout, nav, i18n fr/ar/en, RTL).
+### Phase 4 — Contracts
+Structured templates (**FR + AR in MVP; EN V1**), per-agency numbering authority, full
+generation from reservation data, versions + amendments (vehicle replacement carries
+deposit/insurance continuity), insurance block (franchise/CDW/Super CDW/exclusions →
+inspection zones), cross-border authorization block, driver eligibility pack, image
+signatures + content hash, **Blank Slate issue/reconcile/void + gap report + scanned-sheet
+evidence**, PDF pipeline (Arabic RTL verified).
+**Exit:** content is structured JSON; regeneration = new version; numbering race test;
+Arabic PDF golden test; amendment price change audited with actor+reason.
 
-**Acceptance:** authenticated multi-agency login; cross-tenant access tests pass (both layers);
-permission denial tested; audit rows for auth events; zero-trust CI green; a seeded demo agency.
+### Phase 5 — Inspections & field operations (PWA offline)
+Departure/return inspections, standardized photo slots, damage departure/return diff,
+acknowledgements, offline outbox + idempotent sync, delivery/pickup + cleaning tasks
+(**triage by next departure**) feeding vehicle states, field day-view. Performance budget:
+**full handover < 60 s** (research requirement, adopted).
+**Exit:** airplane-mode E2E without duplicates; conflicting edits → anomaly alert; vehicle
+pipeline RENTED→…→AVAILABLE end-to-end; uploads hardened.
 
-## Phase 2 — Fleet & customers
+### Phase 6 — Payments, deposits, reconciliation
+Payments append-only (cash incl. **EUR/USD at human-confirmed rate**/card/transfer) +
+reversals, deposit lifecycle (cash, manual preauth record, `preauth_expires_at` signal),
+charges require Approval, invoices (Art. 145 CGI mentions validation) + lines, cash sessions
+(per-currency counts, variance, explanation), settlement, outstanding balances.
+**Exit:** immutability trigger test; correction = reversal; "what should be in the drawer"
+answered per branch/day; variance attributed; finance audit complete.
 
-Scope: Vehicle CRUD via state-machine service (states + transitions + audit), categories,
-models, vehicle documents with expiry alert rule (first alert-rule usage), customer profiles +
-encrypted identity documents + flags (human-confirmed), search-first UI (dense tables).
+### MVP slices (thin versions of later phases)
+- **Brief (from Phase 6 data):** in-app morning/EOD brief — departures, returns,
+  utilization, expected cash **+ expected cautions**, critical items (snapshot-based, <500 ms).
+- **Alert core + seed rule pack (~25 rules):** rule engine + signals (ADR-0009/0010) with
+  document expiries, readiness, missing caution/contract, overdue, cash variance, compliance
+  monitors (off by default).
 
-**Acceptance:** illegal transitions rejected with reasons; every legal transition audited;
-document-expiry rule fires; identity numbers encrypted at rest + masked in UI; tenant
-isolation tests extended; PDF of vehicle doc report (first PDF path).
+**NOT in MVP:** GPS hardware ingestion (MOCK adapter only), WhatsApp API, qualified
+e-signature, CMI/Fatourati, DGI clearance, OCR/CV, AI copilot, dynamic pricing, predictive
+maintenance, risk score, fines module, transfer optimization.
 
-## Phase 3 — Reservations
+## V1 — Money & channels (≈ research SHOULD-HAVE)
 
-Scope: reservation lifecycle, quotes (versioned pricing policy), calendar (per vehicle/branch/
-category), conflict detection via exclusion constraints, category→vehicle assignment with
-retry, cancellation/no-show, employee assignments + conflict checks.
+CMI online payments + Fatourati payment links (pending creditor-onboarding facts), card
+pre-authorization (PLBS) integration for deposits, WhatsApp Business notifications
+(confirmations, reminders, doc requests, payment links — G.4; manual share-links as interim),
+qualified e-signature pilot Damanesign/Barid eSign (G.3), invoice UBL/CII export config
+(Art. 145 hard validation), customer intake links (pre-arrival population), 2FA step-up,
+garage SLA views, EN templates + EN UI, reconciliation polish, briefs via WhatsApp push.
 
-**Acceptance:** concurrent booking race test (one txn loses cleanly, 409 with conflict list);
-maintenance windows block reservations; readiness checklist generated; calendar UI renders a
-week of a 50-vehicle fleet with departures/returns; E2E booking flow (first Playwright suite).
+## V2 — Fleet intelligence & Moroccan moat (≈ research DIFFERENTIATOR)
 
-## Phase 4 — Contracts
+Teltonika adapter (real devices) + geofences (Ceuta/Melilla/Tanger Med), signals live
+(ghost/phantom/unauthorized/maintenance-conflict), EV pack (SoC events, charging-time
+calendar blocking), NARSA fine matcher manual-assist → OCR bet (G.7), transparent customer
+risk score (G.6 — objective events, suggestions only), true vehicle P&L (maintenance,
+insurance, GPS subscriptions, depreciation), fleet rebalancing advisor, B2B churn +
+profit-padding reports, flight tracking for airport dispatch, subrogation dossier compiler.
 
-Scope: structured templates (fr/ar/en), numbering authority, full contract generation from
-reservation data, versions + amendments (vehicle replacement, drivers, price change with
-permission+reason), signatures (image capture), **blank contract issue/reconcile/void**,
-PDF pipeline (Chromium; Arabic shaping verified).
+## V3 — Prediction & copilot (≈ research ADVANCED AI, minus rejected items)
 
-**Acceptance:** contract content is structured JSON (no HTML blobs); regeneration = new
-version; blank contract number reconciliation with gap report; Arabic PDF renders RTL
-correctly; amendment price change audited with actor+reason; tests for numbering races.
+AI copilot (grounded, typed FACT/INFERENCE/RECOMMENDATION/UNCERTAINTY, per-tenant, no write
+path, AiProvider port), predictive maintenance, dynamic pricing **advisor** (owner-approved
+rules only), CV damage triage (only after inspection workflows are proven, §9), liquidation
+advisor (manual valuations), weather pricing signals. Permanently excluded: "smart
+contracts", fine-tuned LLM, covert profiling, automated immobilization.
 
-## Phase 5 — Inspections & field operations (PWA offline)
+## Standing rules across all versions
 
-Scope: departure/return inspections, checklists, photo slots, damages (departure/return diff),
-customer+employee acknowledgement, offline outbox + idempotent sync, delivery/pickup tasks +
-cleaning tasks feeding vehicle states, day-view for field agents.
-
-**Acceptance:** full inspection completed with airplane mode, synced without duplicates;
-conflicting edits produce anomaly alert not silent overwrite; vehicle pipeline
-RENTED→AWAITING_INSPECTION→INSPECTED→CLEANING→AVAILABLE driven end-to-end; photo upload
-hardened (type/size/checksum).
-
-## Phase 6 — Payments, deposits, reconciliation
-
-Scope: payments (cash/card/transfer; append-only + reversals), deposit lifecycle (hold/
-preauth→release→charge with approval gate), invoices + lines, cash sessions (open/count/close/
-variance), outstanding balances, contract settlement, daily reconciliation report.
-
-**Acceptance:** payments immutable (DB trigger test); correction = reversal entry; deposit
-charge requires Approval; variance report attributes to session/actor; "what should be in the
-drawer" answered per branch/day; finance audit events complete.
-
-## Phase 7 — Maintenance
-
-Scope: maintenance tasks + blocking windows, records with costs/downtime, document renewals
-(VT/insurance/vignette expiries → configurable lead-time alerts; periodicity configurable —
-register #5), vehicle downtime history.
-
-**Acceptance:** maintenance window blocks reservation (constraint + UI warning); costs feed
-vehicle P&L; expiry alerts configurable per agency; conflicting maintenance vs reservation
-attempts produce actionable errors.
-
-## Phase 8 — Alerts & notifications engine
-
-Scope: rule registry (declarative records), evaluation worker on domain events, dedup,
-severity, acknowledgement workflow, in-app notifications; system rule pack (operational,
-financial, compliance basics); Approval actions from §14.
-
-**Acceptance:** new alert class added by inserting a rule record (no code change); dedup
-windows hold; REQUIRE_APPROVAL actions execute nothing without human decision; alert storm
-test (100 events → bounded alert count).
-
-## Phase 9 — Reporting, morning brief, profitability
-
-Scope: daily ops snapshots (event-materialized, rebuildable), morning/end-of-day briefs
-(§16 format), fleet utilization, revenue/downtime per vehicle, cash outstanding views,
-utilization vs price sanity reports.
-
-**Acceptance:** brief matches ground truth on seeded scenarios (golden tests); snapshot
-rebuild == incremental result; brief loads < 500ms on 100k reservation dataset.
-
-## Phase 10+ — Advanced systems (each gated by its own ADR before start)
-
-| Phase | System | Entry gate |
-|---|---|---|
-| 10 | Fines & customer intelligence | Attribution workflow reviewed (§14); sources verified (register #13) |
-| 11 | GPS/telematics ingestion + geofences | Real device data contract + provider selected; hysteresis design reviewed (critical-analysis §7) |
-| 12 | WhatsApp / SMS notifications | Meta business API cost/policy review; opt-in + consent handling |
-| 13 | AI copilot (read-only, typed answers) | Data model cited-record grounding; ADR-0009 scope accepted |
-| 14 | Predictive maintenance, dynamic pricing, OCR/CV damage assist | Historical dataset volume threshold; §9/§15 constraints restated in ADR |
-
-## Standing rules across all phases
-
-- Every phase's PR references affected ADRs; new assumptions go to the verification register.
-- No integration ships without its adapter's honest status label.
-- Each phase ends with a demo script ("a day in the agency") exercising its flows end-to-end.
+- Every PR references affected ADRs; new external claims enter the verification register.
+- No integration ships without its adapter's honest status label (MOCK/SIMULATED/
+  UNAVAILABLE/CONNECTED).
+- Each version ends with a demo script ("a day in the agency") exercising its flows.
+- Deferred features live behind ports/config/rule records so no decision above requires
+  rework of the core (see reconciliation §G readiness note).

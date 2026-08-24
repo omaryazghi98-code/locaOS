@@ -1,6 +1,7 @@
 # ADR-0007 — Contract engine: structured data → versioned templates → HTML→PDF
 
-- Status: Proposed
+- Status: Proposed — amended 2026-08-24 after research reconciliation (§2 of
+  [reconciliation](../architecture/research-reconciliation.md))
 - Date: 2026-08-24
 
 ## Context
@@ -42,4 +43,22 @@ Arabic brings RTL text with shaping — most PDF libraries cannot render it corr
 - **pdf-lib / Typst / LaTeX** — excellent determinism, but Arabic shaping/RTL forces
   per-engine font pipelines that historically fail; retained as fallback for Latin-only docs
   (invoices).
+
+## Amendment (research reconciliation, 2026-08-24)
+
+Confirmed by the research ("Blank Slate" print, hybrid paper/digital) and strengthened:
+
+- Contract content schema gains structured blocks: `insurance` (franchise, CDW/Super CDW,
+  exclusions mapped to inspection zones), `crossBorderAuthorization` (Ceuta/Melilla/Tanger
+  Med + Admission Temporaire ref), `consent` (CNDP purposes), `driverEligibility`
+  (age/category + license-held rules — configurable industry practice, not law).
+- Vehicle-replacement amendments carry deposit + insurance liability continuity.
+- Blank-contract reconciliation gains scanned-sheet evidence (`scanned_object_key`).
+- Customer-populated contracts = pre-arrival **intake links** writing into structured DRAFT
+  fields (V1/V2) — MVP remains agent-populated + paper.
+- Qualified e-signature claim corrected: providers verified (register #6/#7), but "exact
+  legal weight as wet-ink" is a research overstatement — pilot V1 behind
+  `SignatureProvider` port (open decision G.3); image signature + content hash in MVP.
+- "Blockchain-style timestamps" (research) achieved by append-only versions + content hashes;
+  no blockchain introduced.
 - **Client-side print of an HTML page** — breaks numbering authority, versioning, evidence.
