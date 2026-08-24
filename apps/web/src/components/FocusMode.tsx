@@ -29,10 +29,10 @@ export interface ReturnItem {
 interface FocusData {
   pickups: Pickup[];
   returns: ReturnItem[];
-  overdueTasks: string[];
+  overdueTasks: { reservationId: string; customerName: string; blockers: string[] }[];
   unresolvedBlockers: string[];
   inspectionsPending: boolean;
-  contractActions: { id: string; label: string; href: string }[];
+  contractActions: { id: string; reservationId: string; customerName: string; href: string }[];
 }
 
 type Lang = 'fr' | 'ar' | 'en';
@@ -143,7 +143,9 @@ export default function FocusMode() {
         {data.overdueTasks.length > 0 && (
           <div className="priority critical">
             <strong>{data.overdueTasks.length} {strings.overdueTasks}</strong>
-            {data.overdueTasks.map((task) => <div key={task} className="pill danger">{task}</div>)}
+            {data.overdueTasks.map((task) => (
+              <div key={task.reservationId} className="pill danger">{task.customerName}: {task.blockers.join(', ')}</div>
+            ))}
           </div>
         )}
         {data.unresolvedBlockers.length > 0 && (
@@ -152,13 +154,15 @@ export default function FocusMode() {
             {data.unresolvedBlockers.map((blocker) => <div key={blocker} className="pill warn">{blocker}</div>)}
           </div>
         )}
-        {data.inspectionsPending && (
-          <div className="priority medium"><strong>{strings.inspectionsPending}</strong></div>
-        )}
+        {data.inspectionsPending && <div className="priority medium"><strong>{strings.inspectionsPending}</strong></div>}
         {data.contractActions.length > 0 && (
           <div className="priority high">
             <strong>{data.contractActions.length} {strings.contractActions}</strong>
-            {data.contractActions.map((action) => <div key={action.id} className="action-item"><a href={action.href}>{action.label}</a></div>)}
+            {data.contractActions.map((action) => (
+              <div key={action.id} className="action-item">
+                <a href={action.href}>{strings.prepareContract} — {action.customerName}</a>
+              </div>
+            ))}
           </div>
         )}
         {data.contractActions.length === 0 && data.overdueTasks.length === 0 && data.unresolvedBlockers.length === 0 && !data.inspectionsPending && (
