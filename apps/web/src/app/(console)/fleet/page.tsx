@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { UI_STRINGS } from '@locaos/domain/i18n';
+import { FLEET_STRINGS } from '@locaos/domain/i18n';
 import { apiFetch } from '@/lib/api';
 import {
   DataTable,
@@ -10,6 +10,7 @@ import {
   Section,
   StatusBadge,
 } from '@/components';
+import type { Column } from '@/components/DataTable';
 
 interface V {
   id: string;
@@ -57,7 +58,6 @@ export default function Fleet() {
 
   useEffect(() => {
     let cancelled = false;
-    setLoading(true);
     apiFetch<V[]>('/api/fleet/vehicles')
       .then((data) => {
         if (!cancelled) setVehicles(data);
@@ -79,11 +79,11 @@ export default function Fleet() {
     return acc;
   }, {});
 
-  const columns = [
+  const columns: Column<V>[] = [
     {
       key: 'plate',
-      header: UI_STRINGS.FLEET.plate.fr,
-      format: (_value: unknown, vehicle: V) => (
+      header: FLEET_STRINGS.fr.plate,
+      format: (_value, vehicle) => (
         <a href={`/fleet/${vehicle.id}`} className="mono">
           {vehicle.plate}
         </a>
@@ -91,48 +91,47 @@ export default function Fleet() {
     },
     {
       key: 'model',
-      header: UI_STRINGS.FLEET.model.fr,
-      format: (_value: unknown, vehicle: V) =>
+      header: FLEET_STRINGS.fr.model,
+      format: (_value, vehicle) =>
         vehicle.model ? `${vehicle.model.make} ${vehicle.model.model} (${vehicle.model.year})` : '—',
-      hideIfDetailed: false,
     },
     {
       key: 'category',
-      header: UI_STRINGS.FLEET.category.fr,
-      format: (_value: unknown, vehicle: V) => vehicle.category,
+      header: FLEET_STRINGS.fr.category,
+      format: (_value, vehicle) => vehicle.category,
     },
     {
       key: 'operationalStatus',
-      header: UI_STRINGS.FLEET.status.fr,
-      Component: StatusBadge,
+      header: FLEET_STRINGS.fr.status,
+      format: (value) => <StatusBadge status={String(value)} />,
     },
     {
       key: 'currentMileageKm',
-      header: UI_STRINGS.FLEET.mileage.fr,
-      format: (value: unknown) => Number(value).toLocaleString('fr-MA'),
+      header: FLEET_STRINGS.fr.mileage,
+      format: (value) => Number(value).toLocaleString('fr-MA'),
     },
     {
       key: 'fuelLevelPct',
-      header: UI_STRINGS.FLEET.fuel.fr,
-      format: (value: unknown) => `${Number(value)}%`,
+      header: FLEET_STRINGS.fr.fuel,
+      format: (value) => `${Number(value)}%`,
     },
   ];
 
   return (
     <>
       <PageHeader
-        title={UI_STRINGS.FLEET.title.fr}
+        title={FLEET_STRINGS.fr.title}
         subtitle={
           loading
-            ? UI_STRINGS.FLEET.loading.fr
-            : `${vehicles.length} ${UI_STRINGS.FLEET.vehicles.fr}${vehicles.length > 0 ? ` — ${Object.entries(counts).map(([status, count]) => `${count} ${status}`).join(' · ')}` : ''}`
+            ? FLEET_STRINGS.fr.loading
+            : `${vehicles.length} ${FLEET_STRINGS.fr.vehicles}${vehicles.length > 0 ? ` — ${Object.entries(counts).map(([status, count]) => `${count} ${status}`).join(' · ')}` : ''}`
         }
       />
 
       <Section>
         {loading && (
           <div className="loading" role="status" aria-live="polite">
-            {UI_STRINGS.COMMON.loading.fr}
+            {FLEET_STRINGS.fr.loading}
           </div>
         )}
 
@@ -144,8 +143,8 @@ export default function Fleet() {
 
         {!loading && !error && vehicles.length === 0 && (
           <EmptyState
-            title={UI_STRINGS.FLEET.emptyTitle.fr}
-            description={UI_STRINGS.FLEET.emptyDescription.fr}
+            title={FLEET_STRINGS.fr.emptyTitle}
+            description={FLEET_STRINGS.fr.emptyDescription}
           />
         )}
 
