@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useId, useRef, useState } from 'react';
+import { UI_STRINGS } from '@locaos/domain/i18n';
 
 type ConfirmActionProps = {
   label: string;
@@ -18,8 +19,8 @@ export function ConfirmAction({
   onConfirm,
   variant = 'danger',
   ariaLabel,
-  cancelLabel = 'Annuler',
-  confirmLabel = 'OK',
+  cancelLabel = UI_STRINGS.COMMON.cancel.fr,
+  confirmLabel = UI_STRINGS.COMMON.confirm.fr,
 }: ConfirmActionProps) {
   const [open, setOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement | null>(null);
@@ -35,7 +36,8 @@ export function ConfirmAction({
   useEffect(() => {
     if (!open) return;
     cancelRef.current?.focus();
-
+    const appRoot = document.getElementById('app-content');
+    appRoot?.setAttribute('inert', '');
     const handleKeydown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
         event.preventDefault();
@@ -43,17 +45,12 @@ export function ConfirmAction({
         return;
       }
       if (event.key !== 'Tab') return;
-
       const dialog = dialogRef.current;
       if (!dialog) return;
-      const focusable = Array.from(
-        dialog.querySelectorAll<HTMLElement>('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'),
-      ).filter((element) => !element.hasAttribute('disabled') && element.getClientRects().length > 0);
-
+      const focusable = Array.from(dialog.querySelectorAll<HTMLElement>('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])')).filter((element) => !element.hasAttribute('disabled') && element.getClientRects().length > 0);
       const first = focusable[0];
       const last = focusable[focusable.length - 1];
       if (!first || !last) return;
-
       if (event.shiftKey && document.activeElement === first) {
         event.preventDefault();
         last.focus();
@@ -62,9 +59,11 @@ export function ConfirmAction({
         first.focus();
       }
     };
-
     document.addEventListener('keydown', handleKeydown);
-    return () => document.removeEventListener('keydown', handleKeydown);
+    return () => {
+      appRoot?.removeAttribute('inert');
+      document.removeEventListener('keydown', handleKeydown);
+    };
   }, [close, open]);
 
   const confirm = () => {
@@ -75,29 +74,12 @@ export function ConfirmAction({
 
   return (
     <>
-      <button
-        ref={triggerRef}
-        type="button"
-        className={`btn ${variant}`}
-        onClick={() => setOpen(true)}
-        aria-label={ariaLabel ?? label}
-        aria-haspopup="dialog"
-        aria-expanded={open}
-      >
+      <button ref={triggerRef} type="button" className={`btn ${variant}`} onClick={() => setOpen(true)} aria-label={ariaLabel ?? label} aria-haspopup="dialog" aria-expanded={open}>
         {label}
       </button>
-
       {open && (
         <div className="confirm-overlay" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) close(); }}>
-          <div
-            ref={dialogRef}
-            className="confirm-dialog"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby={titleId}
-            tabIndex={-1}
-            onMouseDown={(event) => event.stopPropagation()}
-          >
+          <div ref={dialogRef} className="confirm-dialog" role="dialog" aria-modal="true" aria-labelledby={titleId} tabIndex={-1} onMouseDown={(event) => event.stopPropagation()}>
             <h3 id={titleId}>{label}</h3>
             <p>{confirmText}</p>
             <div className="confirm-actions">
