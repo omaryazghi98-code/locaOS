@@ -102,7 +102,7 @@ export default function Shell({ children, user, agency, role }: { children: Reac
           </div>
         </div>
       </aside>
-      <main className="main">{children}</main>
+      <main id="app-content" className="main">{children}</main>
     </div>
   );
 }
