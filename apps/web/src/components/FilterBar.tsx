@@ -1,5 +1,7 @@
 'use client';
 
+import { useEffect, useState } from 'react';
+
 type FilterField = {
   key: string;
   label: string;
@@ -9,66 +11,51 @@ type FilterField = {
 
 type FilterBarProps = {
   fields: FilterField[];
+  values?: Record<string, string>;
   onFilterChange: (filters: Record<string, string>) => void;
+  clearLabel?: string;
 };
 
-export function FilterBar({ fields, onFilterChange }: FilterBarProps) {
-  const handleChange = (key: string, value: string) => {
-    const filters: Record<string, string> = {};
-    fields.forEach((f) => {
-      filters[f.key] = f.operator === 'equals' ? (value || '') : (value ?? '');
-    });
-    onFilterChange(filters);
+export function FilterBar({ fields, values, onFilterChange, clearLabel = 'Effacer' }: FilterBarProps) {
+  const [internal, setInternal] = useState<Record<string, string>>(() =>
+    Object.fromEntries(fields.map((field) => [field.key, values?.[field.key] ?? ''])),
+  );
+
+  useEffect(() => {
+    if (values) setInternal(Object.fromEntries(fields.map((field) => [field.key, values[field.key] ?? ''])));
+  }, [fields, values]);
+
+  const update = (key: string, value: string) => {
+    const next = { ...internal, [key]: value };
+    setInternal(next);
+    onFilterChange(next);
+  };
+
+  const clear = () => {
+    const empty = Object.fromEntries(fields.map((field) => [field.key, '']));
+    setInternal(empty);
+    onFilterChange(empty);
   };
 
   return (
-    <div style={{ display: 'flex', gap: 12, margin: '0 0 12px', flexWrap: 'wrap' }}>
+    <div className="filter-bar" role="search" aria-label="Filters">
       {fields.map((field) => (
-        <div key={field.key} style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-          <label
-            style={{
-              fontSize: '11px',
-              color: 'var(--muted)',
-              textTransform: 'uppercase',
-              letterSpacing: '.4px',
-            }}
-          >
-            {field.label}
-          </label>
+        <div className="filter-field" key={field.key}>
+          <label htmlFor={`filter-${field.key}`}>{field.label}</label>
           <input
+            id={`filter-${field.key}`}
             type="text"
             placeholder={field.placeholder ?? field.label}
-            value=""
-            onChange={(e) => handleChange(field.key, e.target.value)}
-            style={{
-              background: 'var(--bg)',
-              color: 'var(--text)',
-              border: '1px solid var(--line)',
-              borderRadius: '6px',
-              padding: '7px 9px',
-              fontSize: '13px',
-              width: '100%',
-            }}
+            value={internal[field.key] ?? ''}
+            onChange={(e) => update(field.key, e.target.value)}
             aria-label={field.label}
+            inputMode={field.operator === 'equals' ? 'text' : 'search'}
           />
         </div>
       ))}
-
       {fields.length > 0 && (
-        <button
-          className="btn mini"
-          style={{
-            marginTop: '4px',
-            fontSize: '11px',
-            padding: '4px 8px',
-          }}
-          onClick={() => {
-            const emptyFilters: Record<string, string> = {};
-            fields.forEach(() => { emptyFilters[''] = ''; });
-            onFilterChange(emptyFilters);
-          }}
-        >
-          Effacer
+        <button type="button" className="btn mini filter-clear" onClick={clear}>
+          {clearLabel}
         </button>
       )}
     </div>
