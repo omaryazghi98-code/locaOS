@@ -14,12 +14,11 @@ type FilterBarProps = {
   values?: Record<string, string>;
   onFilterChange: (filters: Record<string, string>) => void;
   clearLabel?: string;
+  ariaLabel?: string;
 };
 
-export function FilterBar({ fields, values, onFilterChange, clearLabel = 'Effacer' }: FilterBarProps) {
-  const [internal, setInternal] = useState<Record<string, string>>(() =>
-    Object.fromEntries(fields.map((field) => [field.key, values?.[field.key] ?? ''])),
-  );
+export function FilterBar({ fields, values, onFilterChange, clearLabel = 'Effacer', ariaLabel = 'Filtres' }: FilterBarProps) {
+  const [internal, setInternal] = useState<Record<string, string>>(() => Object.fromEntries(fields.map((field) => [field.key, values?.[field.key] ?? ''])));
 
   useEffect(() => {
     if (values) setInternal(Object.fromEntries(fields.map((field) => [field.key, values[field.key] ?? ''])));
@@ -38,9 +37,14 @@ export function FilterBar({ fields, values, onFilterChange, clearLabel = 'Efface
   };
 
   return (
-    <div className="filter-bar" role="search" aria-label="Filters">
+    <div
+      className="filter-bar"
+      role="search"
+      aria-label={ariaLabel}
+      style={{ display: 'flex', gap: 10, alignItems: 'flex-end', flexWrap: 'wrap', marginBottom: 12 }}
+    >
       {fields.map((field) => (
-        <div className="filter-field" key={field.key}>
+        <div key={field.key} className="filter-field" style={{ flex: '1 1 180px', minWidth: 'min(100%, 180px)' }}>
           <label htmlFor={`filter-${field.key}`}>{field.label}</label>
           <input
             id={`filter-${field.key}`}
@@ -54,7 +58,7 @@ export function FilterBar({ fields, values, onFilterChange, clearLabel = 'Efface
         </div>
       ))}
       {fields.length > 0 && (
-        <button type="button" className="btn mini filter-clear" onClick={clear}>
+        <button type="button" className="btn mini filter-clear" onClick={clear} style={{ flex: '0 0 auto' }}>
           {clearLabel}
         </button>
       )}
