@@ -1,7 +1,5 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-
 type FilterField = {
   key: string;
   label: string;
@@ -17,24 +15,9 @@ type FilterBarProps = {
   ariaLabel?: string;
 };
 
-export function FilterBar({ fields, values, onFilterChange, clearLabel = 'Effacer', ariaLabel = 'Filtres' }: FilterBarProps) {
-  const [internal, setInternal] = useState<Record<string, string>>(() => Object.fromEntries(fields.map((field) => [field.key, values?.[field.key] ?? ''])));
-
-  useEffect(() => {
-    if (values) setInternal(Object.fromEntries(fields.map((field) => [field.key, values[field.key] ?? ''])));
-  }, [fields, values]);
-
-  const update = (key: string, value: string) => {
-    const next = { ...internal, [key]: value };
-    setInternal(next);
-    onFilterChange(next);
-  };
-
-  const clear = () => {
-    const empty = Object.fromEntries(fields.map((field) => [field.key, '']));
-    setInternal(empty);
-    onFilterChange(empty);
-  };
+export function FilterBar({ fields, values = {}, onFilterChange, clearLabel = 'Effacer', ariaLabel = 'Filtres' }: FilterBarProps) {
+  const update = (key: string, value: string) => onFilterChange({ ...values, [key]: value });
+  const clear = () => onFilterChange(Object.fromEntries(fields.map((field) => [field.key, ''])));
 
   return (
     <div
@@ -50,7 +33,7 @@ export function FilterBar({ fields, values, onFilterChange, clearLabel = 'Efface
             id={`filter-${field.key}`}
             type="text"
             placeholder={field.placeholder ?? field.label}
-            value={internal[field.key] ?? ''}
+            value={values[field.key] ?? ''}
             onChange={(e) => update(field.key, e.target.value)}
             aria-label={field.label}
             inputMode={field.operator === 'equals' ? 'text' : 'search'}
