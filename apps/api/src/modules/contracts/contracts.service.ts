@@ -47,7 +47,7 @@ export async function newVersion(tx: Tx, agencyId: string, contractId: string, c
 
 export interface AssemblyData {
   agencyName: string; agencyIce: string | null; branchName: string | null;
-  agency?: unknown;
+  agency: typeof agencies.$inferSelect;
   reservation: typeof reservations.$inferSelect | null;
   customer: typeof customers.$inferSelect;
   identityDocs: (typeof identityDocuments.$inferSelect)[];
@@ -56,8 +56,8 @@ export interface AssemblyData {
   category: typeof vehicleCategories.$inferSelect | null;
   quote: typeof quotes.$inferSelect | null;
   deposit: typeof deposits.$inferSelect | null;
-  departureInspection: typeof inspections.$inferSelect | null;
-  returnInspection: typeof inspections.$inferSelect | null;
+  departureInspection?: typeof inspections.$inferSelect | null;
+  returnInspection?: typeof inspections.$inferSelect | null;
   branchOut: typeof branches.$inferSelect | null;
   branchIn: typeof branches.$inferSelect | null;
   contractNumber: string; language: ContractLanguage; mode: 'FULL' | 'BLANK';
@@ -132,7 +132,7 @@ export function assembleContent(data: AssemblyData): ContractContent {
       days: String(q.days),
       discount: cents(q.discount),
       total: cents(q.total),
-      currency: data.agency?.currency ? String(data.agency.currency) : 'MAD',
+      currency: data.agency.currency || 'MAD',
     };
   }
   if (d) {
