@@ -6,6 +6,8 @@ import { useRouter } from 'next/navigation';
 const DENOMS_MAD = ['200', '100', '50', '20', '10', '5'];
 const DENOMS_EUR = ['50', '20', '10', '5'];
 
+type Lang = 'fr' | 'ar' | 'en';
+
 export default function CloseSession({ sessionId, expected }: { sessionId: string; expected: string }) {
   const router = useRouter();
   const [counted, setCounted] = useState<Record<string, Record<string, string>>>({ MAD: {}, EUR: {} });
@@ -13,7 +15,9 @@ export default function CloseSession({ sessionId, expected }: { sessionId: strin
   const [explanation, setExplanation] = useState('');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
-  const lang = (typeof window !== 'undefined' && document.cookie.match(/locaos-lang=([^;])/))?.[1] === 'ar' ? 'ar' : 'fr';
+  const cookieMatch = typeof document !== 'undefined' ? document.cookie.match(/(?:^|;\s*)locaos-lang=([^;]+)/) : null;
+  const lang: Lang = cookieMatch?.[1] === 'ar' ? 'ar' : cookieMatch?.[1] === 'en' ? 'en' : 'fr';
+  const dir = lang === 'ar' ? 'rtl' : 'ltr';
 
   const totalMAD = DENOMS_MAD.reduce((a, d) => a + Number(d) * 100 * Number(counted.MAD?.[d] ?? 0), 0);
   const totalEUR = DENOMS_EUR.reduce((a, d) => a + Number(d) * 100 * Number(counted.EUR?.[d] ?? 0), 0);
@@ -34,12 +38,12 @@ export default function CloseSession({ sessionId, expected }: { sessionId: strin
     const res = await fetch(`/api/finance/cash-sessions/${sessionId}/close`, {
       method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body),
     });
-    if (!res.ok) { const out = await res.json().catch(() => null); setErr(UI_STRINGS.ERROR[lang] ?? UI_STRINGS.ERROR.fr); setBusy(false); return; }
+    if (!res.ok) { await res.json().catch(() => null); setErr(UI_STRINGS.ERROR[lang] ?? UI_STRINGS.ERROR.fr); setBusy(false); return; }
     setBusy(false); router.refresh();
   };
 
   return (
-    <div className="card" style={{ maxWidth: 640, marginBottom: 10, dir: lang === 'ar' ? 'rtl' : 'ltr' }}>
+    <div className="card" style={{ maxWidth: 640, marginBottom: 10, direction: dir }}>
       <h2 style={{ marginTop: 0 }}>{UI_STRINGS.CLOSE_SESSION[lang] ?? UI_STRINGS.CLOSE_SESSION.fr}</h2>
       <div className="sub">{UI_STRINGS.CLOSE_SESSION[lang] ?? UI_STRINGS.CLOSE_SESSION.fr}: Attendu : <b>{mad(Number(expected))}</b> — comptez le tiroir par devise. L'écart est calculé et journalisé, jamais écrasé.</div>
       <div className="row" style={{ gap: 16, marginTop: 10 }}>
