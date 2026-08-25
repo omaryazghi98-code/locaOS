@@ -67,12 +67,12 @@ Root cause: the API always tried to launch `@sparticuz/chromium`, whose bundled 
 
 Correction committed:
 - `2c2ae575` — `fix(pdf): use local Chrome on Windows and macOS`
-- PDF browser selection now honors `CHROMIUM_EXECUTABLE`, otherwise auto-detects a locally installed Chrome/Edge on Windows/macOS, with the bundled Chromium remaining the Linux/server fallback.
+- PDF browser selection now honors `CHROMIUM_EXECUTABLE`, otherwise auto-detects a locally installed Chrome/Edge on Windows/macOS, with the bundled Chromium remaining the Linux server fallback.
 
 **Still needs manual FR + AR PDF verification after syncing.**
 
 ### Contract snapshot / serialization refactor
-Problem identified: contract generation had the right immutable-version architecture but the serialized agreement was incomplete and contained hardcoded rental terms (for example insurance/cross-border/consent defaults). That risks divergence between the operational data and the printed contract.
+Problem identified: contract generation had the right immutable-version architecture but the serialized agreement was incomplete and contained hardcoded rental terms (for example insurance/cross-border/consent defaults). That risks divergence between operational data and the printed contract.
 
 New rule:
 - `contract_versions.content` is the canonical serialized agreement snapshot.
@@ -84,9 +84,11 @@ New rule:
 Implemented:
 - `28d576d` — domain contract schema now includes explicit snapshot metadata, quote version, pricing subtotal, planned/held deposit status, and keeps unconfigured insurance/cross-border/consent terms nullable.
 - `a77f3b3` — contract assembly now serializes quote subtotal/discount/total, quote version, deposit planned/held state, rental capture time, and real vehicle mileage/fuel when available; removed hardcoded insurance/cross-border/consent defaults.
-- `b5b2008` — PDF renderer now prints the serialized subtotal/discount/total, deposit status, and snapshot traceability from that same content object.
-- `5c335ad` — Contract detail page now displays the serialized agreement snapshot (contract total, pricing, deposit, booking/quote version, customer, vehicle, period, mileage/fuel) instead of making the live reservation data the only visible source.
+- `b5b2008` — PDF renderer now prints serialized subtotal/discount/total, deposit status, and snapshot traceability from the same content object.
+- `5c335ad` — Contract detail page now displays the serialized agreement snapshot instead of using live reservation data as the only visible source.
 - `7ac06a6` — domain tests cover the serialized snapshot structure and blank-contract null behavior.
+- `1f00319` — new serialized fields are backward-compatible with historical contract versions so existing demo records remain readable.
+- `cbae1e1` — content hashing now canonicalizes BigInt values safely for structured snapshots.
 
 Important current limitation:
 - The reservation assembly helper still does not yet populate departure/return inspection rows because that helper remains in `contracts.controller.ts`; the schema and assembly layer are prepared for those fields and leave them null until sourced.
@@ -98,7 +100,7 @@ The existing backend template is Morocco-oriented and is explicitly documented a
 ## Still open — must be audited before declaring B2.5 complete
 
 1. Pull and manually verify the Windows PDF renderer correction with a real FR contract, then an AR contract.
-2. Verify the new serialized contract UI/PDF values against the reservation/quote used to generate the contract.
+2. Verify the serialized Contract UI/PDF values against the reservation/quote used to generate the contract.
 3. Populate departure/return inspection snapshot references and recorded mileage/fuel from the controller assembly helper.
 4. Audit contract amendment logic so every amendment creates a complete new snapshot rather than a partial mutation.
 5. Systematically test every visible button/action on the console and identify true no-op actions vs role-gated/invalid-state actions.
