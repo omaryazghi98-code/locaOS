@@ -7,7 +7,7 @@
     "node": ">=22"
   },
   "scripts": {
-    "build": "pnpm --filter @locaos/domain build && pnpm -r --filter '!@locaos/domain' build",
+    "build": "pnpm --filter @locaos/domain build && pnpm --filter @locaos/api build && pnpm --filter @locaos/web build",
     "lint": "eslint .",
     "typecheck": "pnpm --filter @locaos/domain build && pnpm -r run typecheck",
     "test": "pnpm --filter @locaos/domain test && pnpm --filter @locaos/api test",
