@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { FLEET_STRINGS } from '@locaos/domain/i18n';
-import { apiFetch } from '@/lib/api';
+import { clientApiFetch } from '@/lib/client-api';
 import {
   DataTable,
   EmptyState,
@@ -58,7 +58,7 @@ export default function Fleet() {
 
   useEffect(() => {
     let cancelled = false;
-    apiFetch<V[]>('/api/fleet/vehicles')
+    clientApiFetch<V[]>('/api/fleet/vehicles')
       .then((data) => {
         if (!cancelled) setVehicles(data);
       })
