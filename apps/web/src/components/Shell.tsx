@@ -80,6 +80,12 @@ export default function Shell({ children, user, agency, role }: { children: Reac
   const filteredNav = NAV.filter((entry) => entry.roles.includes(role));
   const labels = { fr: (n: NavEntry) => n.label, ar: (n: NavEntry) => n.labelAr, en: (n: NavEntry) => n.labelEn }[lang];
   const densityLabel = lang === 'ar' ? (density === 'compact' ? 'مضغوط' : density === 'detailed' ? 'تفصيلي' : 'مريح') : lang === 'en' ? (density === 'compact' ? 'Compact' : density === 'detailed' ? 'Detailed' : 'Comfortable') : (density === 'compact' ? 'Compact' : density === 'detailed' ? 'Détaillé' : 'Confortable');
+  const densityButtonLabels = lang === 'ar'
+    ? { compact: 'مضغوط', comfortable: 'مريح', detailed: 'تفصيلي' }
+    : lang === 'en'
+      ? { compact: 'Compact', comfortable: 'Comfortable', detailed: 'Detailed' }
+      : { compact: 'Compact', comfortable: 'Confortable', detailed: 'Détaillé' };
+  const densityGroupLabel = lang === 'ar' ? 'كثافة العرض' : lang === 'en' ? 'Display density' : 'Densité d’affichage';
   const menuLabel = lang === 'ar' ? 'فتح التنقل' : lang === 'en' ? 'Open navigation' : 'Ouvrir la navigation';
   const closeMenuLabel = lang === 'ar' ? 'إغلاق التنقل' : lang === 'en' ? 'Close navigation' : 'Fermer la navigation';
 
@@ -91,7 +97,7 @@ export default function Shell({ children, user, agency, role }: { children: Reac
 
   return (
     <>
-      <style>{`@media (min-width: 768px) and (max-width: 1100px) { .layout{grid-template-columns:228px minmax(0,1fr)} .side{width:228px;padding-inline:10px} .side .agency,.side .sub,.side nav a span,.side .lang-label{display:block} .side .logo{text-align:start;margin-inline:8px} .nav a{text-align:start;padding-inline:10px;min-height:40px;display:flex;align-items:center} .main{padding-inline:18px} .shell-footer{position:relative!important;inset:auto!important;margin-top:18px} } @media (max-width:767px){ .side:not(.open){visibility:hidden;pointer-events:none} }`}</style>
+      <style>{`@media (min-width: 768px) and (max-width: 1100px) { .layout{grid-template-columns:228px minmax(0,1fr)} .side{width:228px;padding-inline:10px} .side .agency,.side .sub,.side nav a span,.side .lang-label{display:block} .side .logo{text-align:start;margin-inline:8px} .nav a{text-align:start;padding-inline:10px;min-height:40px;display:flex;align-items:center} .main{padding-inline:18px} .shell-footer{position:relative!important;inset:auto!important;margin-top:18px} } @media (max-width:767px){ .side:not(.open){visibility:hidden;pointer-events:none} } .shell-footer{margin-top:auto;padding-top:10px;border-top:1px solid var(--line)} .shell-density{display:grid;gap:6px;margin-top:10px} .shell-density > div{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:4px} .shell-density button{min-width:0;min-height:36px;padding-inline:6px} @media(max-width:767px){.shell-density button{min-height:44px}}`}</style>
       <div className="layout">
         <button ref={menuButtonRef} type="button" className="mobile-menu-toggle" aria-controls="primary-navigation" aria-expanded={mobileNavOpen} aria-label={mobileNavOpen ? closeMenuLabel : menuLabel} onClick={() => setMobileNavOpen((open) => !open)}>
           <span aria-hidden="true">☰</span>
@@ -109,10 +115,10 @@ export default function Shell({ children, user, agency, role }: { children: Reac
             <button className="mini shell-logout" onClick={logout}>{lang === 'ar' ? 'تسجيل الخروج' : lang === 'en' ? 'Log out' : 'Déconnexion'}</button>
             <div className="shell-density">
               <span className="sub">{densityLabel}</span>
-              <div role="group" aria-label={lang === 'ar' ? 'كثافة العرض' : lang === 'en' ? 'Display density' : 'Densité d’affichage'}>
-                <button type="button" aria-label="Compact" aria-pressed={density === 'compact'} onClick={() => setDensity('compact')}>C</button>
-                <button type="button" aria-label="Comfortable" aria-pressed={density === 'comfortable'} onClick={() => setDensity('comfortable')}>Co</button>
-                <button type="button" aria-label="Detailed" aria-pressed={density === 'detailed'} onClick={() => setDensity('detailed')}>D</button>
+              <div role="group" aria-label={densityGroupLabel}>
+                <button type="button" title={densityButtonLabels.compact} aria-label={densityButtonLabels.compact} aria-pressed={density === 'compact'} onClick={() => setDensity('compact')}>C</button>
+                <button type="button" title={densityButtonLabels.comfortable} aria-label={densityButtonLabels.comfortable} aria-pressed={density === 'comfortable'} onClick={() => setDensity('comfortable')}>Co</button>
+                <button type="button" title={densityButtonLabels.detailed} aria-label={densityButtonLabels.detailed} aria-pressed={density === 'detailed'} onClick={() => setDensity('detailed')}>D</button>
               </div>
             </div>
           </div>
