@@ -24,8 +24,7 @@ export default async function CommandCenter() {
   const PRIORITE_3 = 'cette semaine';
 
   return (
-    <html lang={lang} dir={dir}>
-    <div>
+    <div dir={dir}>
       <div className="topbar"><div>
         <h1>{UI_STRINGS.COMMAND_CENTER[lang] ?? UI_STRINGS.COMMAND_CENTER.fr}</h1>
         <div className="sub">{UI_STRINGS.LOGIN[lang] ?? UI_STRINGS.LOGIN.fr}: Atlas Rent SARL (démo)</div>
@@ -76,6 +75,5 @@ export default async function CommandCenter() {
         Brief détaillé: <a href="/brief?scope=morning">matin</a> · <a href="/brief?scope=eod">fin de journée</a>.
       </div>
     </div>
-    </html>
   );
 }
