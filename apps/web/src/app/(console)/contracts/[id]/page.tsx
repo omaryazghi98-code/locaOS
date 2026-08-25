@@ -8,14 +8,23 @@ interface Detail {
   deposit: { id: string; amount: string; method: string; status: string } | null;
   inspections: { id: string; kind: string; submittedAt: string }[];
   reservation: { id: string; reference: string } | null;
+  content: {
+    snapshot: { capturedAt: string; reservationId: string | null; quoteId: string | null; quoteVersion: string | null; departureInspectionId: string | null; returnInspectionId: string | null };
+    customer: { name: string | null; phone: string | null; email: string | null };
+    vehicle: { plate: string | null; makeModel: string | null; vin: string | null; mileageOut: string | null; fuelOut: string | null };
+    period: { pickupAt: string | null; returnAt: string | null; days: string | null; pickupBranch: string | null; returnBranch: string | null };
+    pricing: { subtotal: string | null; dailyRate: string | null; days: string | null; discount: string | null; total: string | null; currency: string };
+    deposit: { amount: string | null; method: string | null; status: string | null; heldAt: string | null };
+  } | null;
 }
 
 export default async function ContractDetail({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const d = await apiFetch<Detail>(`/api/contracts/${id}`);
   const c = d.contract;
-  const fmt = (s: string | null) => s ? new Intl.DateTimeFormat('fr-MA', { timeZone: 'Africa/Casablanca', dateStyle: 'short', timeStyle: 'short' }).format(new Date(s)) : '—';
-  const mad = (v?: string) => new Intl.NumberFormat('fr-MA').format(Number(v ?? 0) / 100) + ' MAD';
+  const s = d.content;
+  const fmt = (value: string | null) => value ? new Intl.DateTimeFormat('fr-MA', { timeZone: 'Africa/Casablanca', dateStyle: 'short', timeStyle: 'short' }).format(new Date(value)) : '—';
+  const mad = (v?: string | null, currency = 'MAD') => v == null || v === '' ? '—' : new Intl.NumberFormat('fr-MA').format(Number(v)) + ` ${currency}`;
 
   return (
     <div>
@@ -30,7 +39,52 @@ export default async function ContractDetail({ params }: { params: Promise<{ id:
 
       {c.voidedReason && <div className="alert CRITICAL"><div className="t">Contrat annulé</div><div className="m">{c.voidedReason}</div></div>}
 
-      <div className="btnrow">
+      <div className="grid cols2">
+        <div>
+          <div className="card">
+            <h2>Accord sérialisé</h2>
+            <div className="kv">
+              <span className="k">Total contractuel</span><span className="big">{mad(s?.pricing.total, s?.pricing.currency)}</span>
+              <span className="k">Sous-total</span><span>{mad(s?.pricing.subtotal, s?.pricing.currency)}</span>
+              <span className="k">Remise</span><span>{mad(s?.pricing.discount, s?.pricing.currency)}</span>
+              <span className="k">Tarif / jour</span><span>{mad(s?.pricing.dailyRate, s?.pricing.currency)}</span>
+              <span className="k">Jours</span><span>{s?.pricing.days ?? '—'}</span>
+              <span className="k">Caution</span><span>{mad(s?.deposit.amount)}</span>
+              <span className="k">Statut caution</span><span>{s?.deposit.status ?? '—'}</span>
+            </div>
+          </div>
+
+          <div className="card" style={{ marginTop: 10 }}>
+            <h2>Contexte figé</h2>
+            <div className="kv">
+              <span className="k">Capture</span><span>{fmt(s?.snapshot.capturedAt ?? null)}</span>
+              <span className="k">Réservation</span><span className="mono">{s?.snapshot.reservationId ?? '—'}</span>
+              <span className="k">Devis</span><span className="mono">{s?.snapshot.quoteId ?? '—'} {s?.snapshot.quoteVersion ? `· v${s.snapshot.quoteVersion}` : ''}</span>
+              <span className="k">Inspection départ</span><span className="mono">{s?.snapshot.departureInspectionId ?? '—'}</span>
+              <span className="k">Inspection retour</span><span className="mono">{s?.snapshot.returnInspectionId ?? '—'}</span>
+            </div>
+          </div>
+        </div>
+        <div>
+          <div className="card">
+            <h2>Location figée</h2>
+            <div className="kv">
+              <span className="k">Client</span><span>{s?.customer.name ?? '—'}</span>
+              <span className="k">Téléphone</span><span>{s?.customer.phone ?? '—'}</span>
+              <span className="k">E-mail</span><span>{s?.customer.email ?? '—'}</span>
+              <span className="k">Véhicule</span><span>{s?.vehicle.makeModel ?? '—'}</span>
+              <span className="k">Immatriculation</span><span>{s?.vehicle.plate ?? '—'}</span>
+              <span className="k">VIN</span><span className="mono">{s?.vehicle.vin ?? '—'}</span>
+              <span className="k">Départ</span><span>{fmt(s?.period.pickupAt ?? null)} · {s?.period.pickupBranch ?? '—'}</span>
+              <span className="k">Retour</span><span>{fmt(s?.period.returnAt ?? null)} · {s?.period.returnBranch ?? '—'}</span>
+              <span className="k">Km départ</span><span>{s?.vehicle.mileageOut ?? '—'}</span>
+              <span className="k">Carburant départ</span><span>{s?.vehicle.fuelOut ?? '—'}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="btnrow" style={{ marginTop: 10 }}>
         {c.status === 'DRAFT' && <ActionButton path={`/api/contracts/${c.id}/sign`} promptLabel="Nom du client (signature)" promptField="customerName" label="Signer" variant="primary" />}
         {c.status === 'SIGNED' && <ActionButton path={`/api/contracts/${c.id}/activate`} label="Activer (remise)" variant="primary" confirmText="Confirmer la remise du véhicule ?" />}
         {c.status === 'ACTIVE' && <ActionButton path={`/api/contracts/${c.id}/close`} label="Clôturer (retour traité)" variant="primary" />}
