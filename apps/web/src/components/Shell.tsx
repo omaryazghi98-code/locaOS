@@ -25,7 +25,7 @@ const NAV: NavEntry[] = [
   { href: '/focus', label: FOCUS_STRINGS.fr.title, labelAr: FOCUS_STRINGS.ar.title, labelEn: FOCUS_STRINGS.en.title, roles: ['agent', 'field_agent'] },
   { href: '/field', label: UI_STRINGS.MAIN_NAV.fr[9] as string, labelAr: UI_STRINGS.MAIN_NAV.ar[9] as string, labelEn: UI_STRINGS.MAIN_NAV.en[9] as string, roles: ['field_agent'] },
   { href: '/finance', label: UI_STRINGS.MAIN_NAV.fr[10] as string, labelAr: UI_STRINGS.MAIN_NAV.ar[10] as string, labelEn: UI_STRINGS.MAIN_NAV.en[10] as string, roles: ['owner', 'manager', 'accountant'] },
-  { href: '/reports', label: UI_STRINGS.MAIN_NAV.fr[11] as string, labelAr: UI_STRINGS.MAIN_NAV.ar[11] as string, labelEn: UI_STRINGS.MAIN_NAV.en[11] as string, roles: ['owner', 'manager', 'agent', 'accountant'] },
+  { href: '/reports', label: UI_STRINGS.MAIN_NAV.fr[11] as string, labelAr: UI_STRINGS.MAIN_NAV.en[11] as string, labelEn: UI_STRINGS.MAIN_NAV.en[11] as string, roles: ['owner', 'manager', 'agent', 'accountant'] },
   { href: '/alerts', label: UI_STRINGS.MAIN_NAV.fr[12] as string, labelAr: UI_STRINGS.MAIN_NAV.ar[12] as string, labelEn: UI_STRINGS.MAIN_NAV.en[12] as string, roles: ['owner', 'manager', 'agent', 'accountant'] },
 ];
 
@@ -40,6 +40,7 @@ export default function Shell({ children, user, agency, role }: { children: Reac
   const router = useRouter();
   const [lang, setLang] = useState<Lang>('fr');
   const [density, setDensity] = useState<Density>('comfortable');
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
   useEffect(() => {
     const nextLang = readLang();
@@ -50,6 +51,10 @@ export default function Shell({ children, user, agency, role }: { children: Reac
     const saved = window.localStorage.getItem('locaos-density');
     if (saved === 'compact' || saved === 'comfortable' || saved === 'detailed') setDensity(saved);
   }, []);
+
+  useEffect(() => {
+    setMobileNavOpen(false);
+  }, [path]);
 
   const handleLangChange = (next: Lang) => {
     setLang(next);
@@ -65,6 +70,8 @@ export default function Shell({ children, user, agency, role }: { children: Reac
   const filteredNav = NAV.filter((entry) => entry.roles.includes(role));
   const labels = { fr: (n: NavEntry) => n.label, ar: (n: NavEntry) => n.labelAr, en: (n: NavEntry) => n.labelEn }[lang];
   const densityLabel = lang === 'ar' ? (density === 'compact' ? 'مضغوط' : density === 'detailed' ? 'تفصيلي' : 'مريح') : lang === 'en' ? (density === 'compact' ? 'Compact' : density === 'detailed' ? 'Detailed' : 'Comfortable') : (density === 'compact' ? 'Compact' : density === 'detailed' ? 'Détaillé' : 'Confortable');
+  const menuLabel = lang === 'ar' ? 'فتح التنقل' : lang === 'en' ? 'Open navigation' : 'Ouvrir la navigation';
+  const closeMenuLabel = lang === 'ar' ? 'إغلاق التنقل' : lang === 'en' ? 'Close navigation' : 'Fermer la navigation';
 
   const logout = async () => {
     await fetch('/api/auth/logout', { method: 'POST' });
@@ -74,13 +81,39 @@ export default function Shell({ children, user, agency, role }: { children: Reac
 
   return (
     <div className="layout">
-      <aside className="side">
+      <button
+        type="button"
+        className="mobile-menu-toggle"
+        aria-controls="primary-navigation"
+        aria-expanded={mobileNavOpen}
+        aria-label={mobileNavOpen ? closeMenuLabel : menuLabel}
+        onClick={() => setMobileNavOpen((open) => !open)}
+      >
+        <span aria-hidden="true">☰</span>
+      </button>
+
+      {mobileNavOpen && (
+        <button
+          type="button"
+          className="mobile-menu-backdrop"
+          aria-label={closeMenuLabel}
+          onClick={() => setMobileNavOpen(false)}
+        />
+      )}
+
+      <aside className={`side${mobileNavOpen ? ' open' : ''}`}>
         <div className="logo">loca<span>OS</span></div>
         <div className="agency">{agency}</div>
-        <nav className="nav" aria-label="Primary navigation">
+        <nav id="primary-navigation" className="nav" aria-label={lang === 'ar' ? 'التنقل الرئيسي' : lang === 'en' ? 'Primary navigation' : 'Navigation principale'}>
           {filteredNav.map((entry) => (
-            <Link key={entry.href} href={entry.href} className={path === entry.href || (entry.href !== '/' && path.startsWith(entry.href)) ? 'active' : ''}>
-              {labels(entry)}
+            <Link
+              key={entry.href}
+              href={entry.href}
+              className={path === entry.href || (entry.href !== '/' && path.startsWith(entry.href)) ? 'active' : ''}
+              aria-current={path === entry.href ? 'page' : undefined}
+              onClick={() => setMobileNavOpen(false)}
+            >
+              <span>{labels(entry)}</span>
             </Link>
           ))}
         </nav>
@@ -98,7 +131,9 @@ export default function Shell({ children, user, agency, role }: { children: Reac
           </div>
         </div>
       </aside>
-      <main className="main">{children}</main>
+      <main className="main">
+        {children}
+      </main>
     </div>
   );
 }
