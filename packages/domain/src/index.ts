@@ -1,4 +1,5 @@
 export * from './money.js';
+export * from './time.js';
 export * from './vehicleStateMachine.js';
 export * from './reservation.js';
 export * from './pricing.js';
