@@ -2,14 +2,14 @@
  * Deterministic, versioned quote computation (pure function of its inputs).
  * The Quote row persists inputs + output so any price can be explained later.
  */
-import { rentalDays } from './money.js';
+import { calculateRentalTime } from './time.js';
 
 export interface QuoteLine {
   code: string;            // RENTAL | DELIVERY | EXTRA_<code> | DISCOUNT
   label: string;
   qty: number;
   unitAmount: bigint;      // centimes
-  total: bigint;           // centimes
+  total: bigint;            // centimes
 }
 
 export interface QuoteInput {
@@ -34,7 +34,7 @@ export interface QuoteOutput {
 }
 
 export function computeQuote(input: QuoteInput): QuoteOutput {
-  const days = rentalDays(input.pickupAt, input.returnAt);
+  const days = calculateRentalTime(input.pickupAt, input.returnAt).billableDays;
   const lines: QuoteLine[] = [];
   const rentalTotal = input.dailyRate * BigInt(days);
   lines.push({ code: 'RENTAL', label: `Location (${days} j)`, qty: days, unitAmount: input.dailyRate, total: rentalTotal });
