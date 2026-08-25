@@ -12,7 +12,7 @@ import {
 import { type Tx } from '../../db/client';
 import {
   agencies, branches, contractSequences, contractVersions, contracts,
-  customers, deposits, identityDocuments, quotes, reservations,
+  customers, deposits, identityDocuments, inspections, quotes, reservations,
   vehicleCategories, vehicleModels, vehicles,
 } from '../../db/schema.js';
 import { contentHash } from '../crypto/crypto.js';
@@ -36,9 +36,10 @@ export async function newVersion(tx: Tx, agencyId: string, contractId: string, c
     .where(eq(contractVersions.contractId, contractId)).orderBy(desc(contractVersions.version)).limit(1);
   const version = (last[0]?.v ?? 0) + 1;
   const id = globalThis.crypto.randomUUID();
+  const parsed = ContractContent.parse(content);
   await tx.insert(contractVersions).values({
-    id, agencyId, contractId, version, content: JSON.parse(JSON.stringify(content)) as never,
-    contentHash: contentHash(content), createdBy: userId,
+    id, agencyId, contractId, version, content: JSON.parse(JSON.stringify(parsed, (_, value) => typeof value === 'bigint' ? String(value) : value)) as never,
+    contentHash: contentHash(parsed), createdBy: userId,
   });
   await tx.update(contracts).set({ currentVersionId: id, updatedAt: new Date() }).where(eq(contracts.id, contractId));
   return id;
@@ -55,6 +56,8 @@ export interface AssemblyData {
   category: typeof vehicleCategories.$inferSelect | null;
   quote: typeof quotes.$inferSelect | null;
   deposit: typeof deposits.$inferSelect | null;
+  departureInspection: typeof inspections.$inferSelect | null;
+  returnInspection: typeof inspections.$inferSelect | null;
   branchOut: typeof branches.$inferSelect | null;
   branchIn: typeof branches.$inferSelect | null;
   contractNumber: string; language: ContractLanguage; mode: 'FULL' | 'BLANK';
@@ -64,11 +67,28 @@ export interface AssemblyData {
 const masked = (docs: AssemblyData['identityDocs'], type: string) =>
   docs.find((d) => d.type === type)?.numberLast4 ? `••••••${docs.find((d) => d.type === type)!.numberLast4}` : null;
 
+const cents = (value: bigint | number | string | null | undefined) => value == null ? null : String(Number(value) / 100);
+
 export function assembleContent(data: AssemblyData): ContractContent {
+  const capturedAt = new Date().toISOString();
   const c = blankContractContent({
     agencyName: data.agencyName, agencyIce: data.agencyIce, branchName: data.branchName,
     contractNumber: data.contractNumber, language: data.language,
   });
+  c.header.issuedAt = capturedAt;
+  c.snapshot = {
+    capturedAt,
+    reservationId: data.reservation?.id ?? null,
+    quoteId: data.quote?.id ?? null,
+    quoteVersion: data.quote ? String(data.quote.version) : null,
+    departureInspectionId: data.departureInspection?.id ?? null,
+    returnInspectionId: data.returnInspection?.id ?? null,
+  };
+  c.references.reservationId = data.reservation?.id ?? null;
+  c.references.quoteId = data.quote?.id ?? null;
+  c.references.departureInspectionId = data.departureInspection?.id ?? null;
+  c.references.returnInspectionId = data.returnInspection?.id ?? null;
+
   if (data.mode === 'BLANK') return c;
 
   const r = data.reservation;
@@ -76,6 +96,8 @@ export function assembleContent(data: AssemblyData): ContractContent {
   const q = data.quote;
   const v = data.vehicle;
   const d = data.deposit;
+  const departure = data.departureInspection;
+  const returned = data.returnInspection;
 
   c.header.mode = 'FULL';
   c.customer = {
@@ -84,13 +106,15 @@ export function assembleContent(data: AssemblyData): ContractContent {
     licenseNumber: masked(data.identityDocs, 'DRIVER_LICENSE'),
     licenseIssuedOn: data.identityDocs.find((x) => x.type === 'DRIVER_LICENSE')?.issueDate ?? null,
     phone: cust.phone, email: cust.email, address: null,
-    birthDate: data.identityDocs.find((x) => x.type === 'CIN')?.issueDate ?? null,
+    birthDate: null,
   };
   if (v && data.vehicleModel && data.category) {
     c.vehicle = {
       plate: v.plate, makeModel: `${data.vehicleModel.make} ${data.vehicleModel.model} (${data.vehicleModel.year})`,
-      category: data.category.name, mileageOut: String(v.currentMileageKm),
-      fuelOut: `${v.fuelLevelPct}%`, vin: v.vin,
+      category: data.category.name,
+      mileageOut: String(departure?.mileageKm ?? v.currentMileageKm),
+      fuelOut: `${departure?.fuelLevelPct ?? v.fuelLevelPct}%`,
+      vin: v.vin,
     };
   }
   if (r) {
@@ -103,28 +127,34 @@ export function assembleContent(data: AssemblyData): ContractContent {
   if (q) {
     const inputs = q.inputs as { dailyRate?: string };
     c.pricing = {
+      subtotal: cents(q.subtotal),
       dailyRate: inputs.dailyRate ? String(Number(inputs.dailyRate) / 100) : null,
       days: String(q.days),
-      discount: String(Number(q.discount) / 100),
-      total: String(Number(q.total) / 100),
-      currency: 'MAD',
+      discount: cents(q.discount),
+      total: cents(q.total),
+      currency: data.agency?.currency ? String(data.agency.currency) : 'MAD',
     };
   }
   if (d) {
-    c.deposit = { amount: String(Number(d.amount) / 100), method: d.method, heldAt: d.heldBy ? d.createdAt.toISOString() : null };
+    c.deposit = { amount: cents(d.amount), method: d.method, status: d.status, heldAt: d.heldBy ? d.createdAt.toISOString() : null };
+  } else if (q) {
+    c.deposit = { amount: cents(q.depositRequired), method: null, status: 'PLANNED', heldAt: null };
   }
-  // Insurance block — agency practice defaults (configurable upstream; not legal advice)
-  c.insurance = { franchiseAmount: 8_000_00n, cdw: true, superCdw: false, exclusions: ['Pneumatiques', 'Glace', 'Sous-bassement'] };
-  c.crossBorder = { authorized: false, zones: ['Ceuta', 'Melilla', 'Tanger Med'], admissionTemporaireRef: null };
+
+  // These terms must come from an actual configured rental/contract source. Do not invent them.
+  c.insurance = { franchiseAmount: null, cdw: null, superCdw: null, exclusions: null };
+  c.crossBorder = { authorized: null, zones: null, admissionTemporaireRef: null };
+  c.consents = null;
+
+  c.mileageFuel.mileageOut = departure?.mileageKm != null ? String(departure.mileageKm) : c.vehicle.mileageOut;
+  c.mileageFuel.fuelOut = departure?.fuelLevelPct != null ? `${departure.fuelLevelPct}%` : c.vehicle.fuelOut;
+  c.mileageFuel.mileageIn = returned?.mileageKm != null ? String(returned.mileageKm) : null;
+  c.mileageFuel.fuelIn = returned?.fuelLevelPct != null ? `${returned.fuelLevelPct}%` : null;
+
   if (r) {
     c.references.reservationId = r.id;
     c.references.quoteId = r.quoteId;
   }
-  c.consents = [
-    { purpose: 'GPS_TRACKING', granted: false },
-    { purpose: 'MARKETING', granted: false },
-    { purpose: 'DATA_PROCESSING', granted: true },
-  ];
   return ContractContent.parse(c);
 }
 
