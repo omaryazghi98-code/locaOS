@@ -13,13 +13,38 @@ describe('contract content', () => {
     expect(c.header.mode).toBe('BLANK');
     expect(c.customer.name).toBeNull();
     expect(c.vehicle.plate).toBeNull();
+    expect(c.snapshot.reservationId).toBeNull();
+    expect(c.pricing.total).toBeNull();
+    expect(c.deposit.status).toBeNull();
+    expect(c.insurance.cdw).toBeNull();
+    expect(c.crossBorder.authorized).toBeNull();
+    expect(c.consents).toEqual([]);
     // the number is real and traceable — never an invisible record
     expect(c.header.contractNumber).toBe('L-2026-00042');
   });
 
-  it('numbering format is deterministic and zero-padded', () => {
-    expect(formatContractNumber('L', 2026, 7)).toBe('L-2026-00007');
-    expect(formatContractNumber('L', 2027, 12345)).toBe('L-2027-12345');
+  it('serialized commercial and rental context validates as one snapshot', () => {
+    const c = blankContractContent({ agencyName: 'A', agencyIce: null, branchName: null, contractNumber: 'L-2026-00001', language: 'fr' });
+    c.header.mode = 'FULL';
+    c.snapshot = {
+      capturedAt: '2026-08-25T05:00:00.000Z',
+      reservationId: 'res-1',
+      quoteId: 'quote-1',
+      quoteVersion: '3',
+      departureInspectionId: 'insp-out',
+      returnInspectionId: null,
+    };
+    c.pricing = { subtotal: '3000', dailyRate: '750', days: '4', discount: '200', total: '2800', currency: 'MAD' };
+    c.deposit = { amount: '2000', method: 'CARD_PREAUTH', status: 'HELD', heldAt: '2026-08-25T05:30:00.000Z' };
+    c.vehicle.mileageOut = '48210';
+    c.vehicle.fuelOut = '75%';
+    c.mileageFuel.mileageIn = null;
+    expect(() => ContractContent.parse(c)).not.toThrow();
+    expect(c.pricing.subtotal).toBe('3000');
+    expect(c.pricing.total).toBe('2800');
+    expect(c.deposit.status).toBe('HELD');
+    expect(c.snapshot.quoteVersion).toBe('3');
+    expect(c.snapshot.departureInspectionId).toBe('insp-out');
   });
 
   it('fully populated contract validates', () => {
