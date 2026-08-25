@@ -2,6 +2,8 @@
  * Money — integer centimes only. Floats never touch money paths (ADR-0008).
  * Amounts are bigint-safe; JSON transport uses string.
  */
+import { calculateRentalTime } from './time.js';
+
 export const CURRENCIES = ['MAD', 'EUR', 'USD', 'GBP', 'CHF', 'CAD', 'AED'] as const;
 export type Currency = (typeof CURRENCIES)[number];
 
@@ -39,14 +41,12 @@ export function formatMoney(amount: number | bigint, currency: Currency | string
   }
 }
 
-/** Backward-compatible rental-day helper; new business logic should use calculateRentalTime(). */
+/** Backward-compatible rental-day helper; all new business logic delegates to the time engine. */
 export function rentalDays(from: Date, to: Date, minDays = 1, graceHours = 2): number {
-  const ms = to.getTime() - from.getTime();
-  if (ms <= 0) return minDays;
-  const days = ms / 86_400_000;
-  const rounded = Math.floor(days);
-  const remainderHours = (days - rounded) * 24;
-  return Math.max(minDays, remainderHours >= graceHours ? rounded + 1 : Math.max(rounded, 1));
+  return calculateRentalTime(from, to, {
+    minimumDays: minDays,
+    graceMinutes: graceHours * 60,
+  }).billableDays;
 }
 
 export function sumAmounts(amounts: (number | bigint)[]): bigint {
