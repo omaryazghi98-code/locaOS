@@ -13,7 +13,8 @@ const mad = (v?: string) => new Intl.NumberFormat('fr-MA').format(Number(v ?? 0)
 export default async function CommandCenter() {
   const c = await apiFetch<CC>('/api/ops/command-center');
   const h = c.happening;
-  const lang = (typeof window !== 'undefined' && document.cookie.match(/locaos-lang=([^;])/))?.[1] === 'ar' ? 'ar' : 'fr';
+  const cookieMatch = typeof document !== 'undefined' ? document.cookie.match(/(?:^|;\s*)locaos-lang=([^;]+)/) : null;
+  const lang = cookieMatch?.[1] === 'ar' ? 'ar' : 'fr';
   const dir = lang === 'ar' ? 'rtl' : 'ltr';
 
   const NO_ACTIONS = lang === 'ar' ? 'AUCUNE ACTION PRIORITAIRE' : 'No priority actions';
