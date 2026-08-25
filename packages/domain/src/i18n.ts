@@ -9,36 +9,25 @@ export const UI_STRINGS = {
     ar: ['البرef', 'اليوم', 'الBriefs', 'الحجوزات', 'التقويم', 'الأسطول', 'العملاء', 'العقود', 'المواقع', 'الأرض (PWA)', 'المالية والتقارير', 'التنبيهات'],
     en: ['Brief of the day', 'Today', 'Briefs', 'Reservations', 'Calendar', 'Fleet', 'Customers', 'Contracts', 'Map', 'Field (PWA)', 'Cash & finance', 'Reports', 'Alerts'],
   } satisfies LocalizedNav,
-  COMMAND_CENTER: {
-    fr: 'Centre de commandement', ar: 'مركز القيادة', en: 'Command Center',
-  } satisfies LocalizedString,
-  LOGIN: {
-    fr: 'Connexion', ar: 'تسجيل الدخول', en: 'Login',
-  } satisfies LocalizedString,
-  SHELL: {
-    fr: 'locaOS', ar: 'locaOS', en: 'locaOS',
-  } satisfies LocalizedString,
-  ACTION: {
-    fr: 'Action', ar: 'إجراء', en: 'Action',
-  } satisfies LocalizedString,
-  CLOSE_SESSION: {
-    fr: 'Clôture de session', ar: 'إغلاق الجلسة', en: 'Close Session',
-  } satisfies LocalizedString,
-  ERROR: {
-    fr: 'Erreur', ar: 'خطأ', en: 'Error',
-  } satisfies LocalizedString,
-  LOGGED_IN: {
-    fr: 'Connecté en tant que', ar: 'متصل كما', en: 'Logged in as',
-  } satisfies LocalizedString,
-  DARK: {
-    fr: 'Sombre', ar: 'داكن', en: 'Dark',
-  } satisfies LocalizedString,
-  COMFORTABLE: {
-    fr: 'Confortable', ar: 'مريح', en: 'Comfortable',
-  } satisfies LocalizedString,
-  DETAILED: {
-    fr: 'Détail', ar: 'تفصيلي', en: 'Detailed',
-  } satisfies LocalizedString,
+  COMMAND_CENTER: { fr: 'Centre de commandement', ar: 'مركز القيادة', en: 'Command Center' } satisfies LocalizedString,
+  LOGIN: { fr: 'Connexion', ar: 'تسجيل الدخول', en: 'Login' } satisfies LocalizedString,
+  SHELL: { fr: 'locaOS', ar: 'locaOS', en: 'locaOS' } satisfies LocalizedString,
+  ACTION: { fr: 'Action', ar: 'إجراء', en: 'Action' } satisfies LocalizedString,
+  CLOSE_SESSION: { fr: 'Clôture de session', ar: 'إغلاق الجلسة', en: 'Close Session' } satisfies LocalizedString,
+  ERROR: { fr: 'Erreur', ar: 'خطأ', en: 'Error' } satisfies LocalizedString,
+  LOGGED_IN: { fr: 'Connecté en tant que', ar: 'متصل كما', en: 'Logged in as' } satisfies LocalizedString,
+  DARK: { fr: 'Sombre', ar: 'داكن', en: 'Dark' } satisfies LocalizedString,
+  COMFORTABLE: { fr: 'Confortable', ar: 'مريح', en: 'Comfortable' } satisfies LocalizedString,
+  DETAILED: { fr: 'Détaillé', ar: 'تفصيلي', en: 'Detailed' } satisfies LocalizedString,
+  COMMON: {
+    language: { fr: 'Langue', ar: 'اللغة', en: 'Language' },
+    selectAll: { fr: 'Sélectionner tout', ar: 'تحديد الكل', en: 'Select all' },
+    selectRow: { fr: 'Sélectionner cette ligne', ar: 'تحديد هذا الصف', en: 'Select this row' },
+    cancel: { fr: 'Annuler', ar: 'إلغاء', en: 'Cancel' },
+    confirm: { fr: 'OK', ar: 'تأكيد', en: 'OK' },
+    clear: { fr: 'Effacer', ar: 'مسح', en: 'Clear' },
+    filters: { fr: 'Filtres', ar: 'الفلاتر', en: 'Filters' },
+  },
 } as const;
 
 export const FLEET_STRINGS = {
