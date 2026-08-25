@@ -25,9 +25,9 @@ This file records the latest manual browser findings and corrections after the o
 ## Manual UX defects now confirmed
 
 ### Arabic RTL persistence
-Observed: switching to Arabic correctly moves the sidebar to the right immediately, but after navigation/reload the root layout can return to LTR and the sidebar moves left until the client corrects it.
+Observed: switching to Arabic correctly moves the sidebar to the right immediately, but after navigation/reload the root layout could return to LTR and the sidebar moved left.
 
-Root cause: `apps/web/src/app/layout.tsx` is a Server Component but attempted to read `document.cookie`; this can never be the authoritative server-side cookie read.
+Root cause: `apps/web/src/app/layout.tsx` is a Server Component but attempted to read `document.cookie`; this cannot be the authoritative server-side cookie read.
 
 Correction committed:
 - `74d3538` — `fix(i18n): persist root RTL direction from language cookie`
@@ -45,6 +45,20 @@ The backend already has:
 Correction committed:
 - `d9e3f02` — new `ContractBlankPrintButton` that creates the blank contract and opens its PDF.
 - `01c864c` — Contracts page now uses the new button and passes the active cookie locale.
+
+### Contextual contract printing from reservations and vehicles
+Requirement clarified: operators should not re-enter data that the system already knows from the booking/rental context.
+
+Implemented:
+- `bc83face` — added `ContractFromReservationButton` that calls `/api/contracts/from-reservation` for the reservation context and immediately opens the resulting contract PDF.
+- `2595229` — Reservation detail now shows one contextual `Prepare / print contract` action when a vehicle is assigned, using the active FR/AR/EN locale. The previous separate FR + Arabic generate buttons were removed.
+- `ad436b4` — Vehicle detail now shows `Contrat / PDF` when there is an active/current contract, and `Préparer contrat` linking to the associated reservation when a next reservation exists but no current contract exists.
+
+Workflow rule:
+- Reservation context supplies customer, vehicle, branch, pickup/return and other known rental data.
+- Vehicle context reuses the current contract or directs the operator to the associated reservation.
+- Unknown fields remain printable blanks for handwriting; do not ask the operator to duplicate data already present in the booking/rental context.
+- Printing must not create or modify financial ledger records.
 
 ### Morocco contract example / template
 The existing backend template is already Morocco-oriented and is explicitly documented as common Moroccan agency practice, not legal advice. It contains fields for agency identity/ICE, CIN/passport, driving licence, vehicle/VIN, rental period, pricing, deposit, insurance/deductible, mileage/fuel, cross-border authorization, additional drivers, CNDP-related consent fields, and signatures.
