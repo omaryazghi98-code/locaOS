@@ -2,10 +2,10 @@
  * Money — integer centimes only. Floats never touch money paths (ADR-0008).
  * Amounts are bigint-safe; JSON transport uses string.
  */
-export const CURRENCIES = ['MAD', 'EUR', 'USD'] as const;
+export const CURRENCIES = ['MAD', 'EUR', 'USD', 'GBP', 'CHF', 'CAD', 'AED'] as const;
 export type Currency = (typeof CURRENCIES)[number];
 
-export type MoneyAmount = { amount: number | bigint; currency: Currency }; // amount = centimes
+export type MoneyAmount = { amount: number | bigint; currency: Currency }; // amount = minor units
 
 export function assertCurrency(c: string): asserts c is Currency {
   if (!(CURRENCIES as readonly string[]).includes(c)) {
@@ -15,13 +15,13 @@ export function assertCurrency(c: string): asserts c is Currency {
 
 export class MoneyError extends Error {}
 
-/** Multiply a foreign-currency centimes amount by a MAD-per-unit rate (human-confirmed). */
+/** Multiply a foreign-currency minor-unit amount by a human-confirmed MAD-per-unit rate. */
 export function toMadEquivalent(amountCents: bigint, rate: number): bigint {
   if (!(rate > 0) || !Number.isFinite(rate)) throw new MoneyError('FX rate must be > 0');
   return BigInt(Math.round(Number(amountCents) * rate));
 }
 
-/** Parse user input "1 234,50" / "1234.50" → centimes. Throws MoneyError on junk. */
+/** Parse user input "1 234,50" / "1234.50" → minor units. */
 export function parseAmountInput(input: string): bigint {
   const cleaned = input.replace(/\s/gu, '').replace(',', '.');
   if (!/^\d+(\.\d{1,2})?$/.test(cleaned)) throw new MoneyError(`Invalid amount: ${input}`);
@@ -39,7 +39,7 @@ export function formatMoney(amount: number | bigint, currency: Currency | string
   }
 }
 
-/** Daily rate × days with grace: partial last day counts if >= 2 hours (agency practice, configurable upstream). */
+/** Backward-compatible rental-day helper; new business logic should use calculateRentalTime(). */
 export function rentalDays(from: Date, to: Date, minDays = 1, graceHours = 2): number {
   const ms = to.getTime() - from.getTime();
   if (ms <= 0) return minDays;
