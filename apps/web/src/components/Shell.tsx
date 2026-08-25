@@ -6,11 +6,9 @@ import { useEffect, useState } from 'react';
 import { UI_STRINGS, FOCUS_STRINGS } from '@locaos/domain/i18n';
 import { ROLE_KEYS, type RoleKey } from '@locaos/domain/permissions';
 import { LanguageSwitcher } from './LanguageSwitcher';
+import { DENSITY_EVENT, LANGUAGE_EVENT, readDensity, readLocale, setDensity, type Density, type Locale } from '@/lib/client-preferences';
 
-type Lang = 'fr' | 'ar' | 'en';
-type Density = 'compact' | 'comfortable' | 'detailed';
 type NavEntry = { href: string; label: string; labelAr: string; labelEn: string; roles: readonly RoleKey[] };
-
 const ALL_ROLES = ROLE_KEYS;
 const NAV: NavEntry[] = [
   { href: '/', label: UI_STRINGS.MAIN_NAV.fr[0] as string, labelAr: UI_STRINGS.MAIN_NAV.ar[0] as string, labelEn: UI_STRINGS.MAIN_NAV.en[0] as string, roles: ALL_ROLES },
@@ -19,7 +17,7 @@ const NAV: NavEntry[] = [
   { href: '/reservations', label: UI_STRINGS.MAIN_NAV.fr[3] as string, labelAr: UI_STRINGS.MAIN_NAV.ar[3] as string, labelEn: UI_STRINGS.MAIN_NAV.en[3] as string, roles: ['owner', 'manager', 'agent', 'field_agent'] },
   { href: '/calendar', label: UI_STRINGS.MAIN_NAV.fr[4] as string, labelAr: UI_STRINGS.MAIN_NAV.ar[4] as string, labelEn: UI_STRINGS.MAIN_NAV.en[4] as string, roles: ALL_ROLES },
   { href: '/fleet', label: UI_STRINGS.MAIN_NAV.fr[5] as string, labelAr: UI_STRINGS.MAIN_NAV.ar[5] as string, labelEn: UI_STRINGS.MAIN_NAV.en[5] as string, roles: ['owner', 'manager', 'mechanic'] },
-  { href: '/customers', label: UI_STRINGS.MAIN_NAV.fr[6] as string, labelAr: UI_STRINGS.MAIN_NAV.ar[6] as string, labelEn: UI_STRINGS.MAIN_NAV.en[6] as string, roles: ['owner', 'manager', 'agent', 'accountant'] },
+  { href: '/customers', label: UI_STRINGS.MAIN_NAV.fr[6] as string, labelAr: UI_STRINGS.MAIN_NAV.en[6] as string, labelEn: UI_STRINGS.MAIN_NAV.en[6] as string, roles: ['owner', 'manager', 'agent', 'accountant'] },
   { href: '/contracts', label: UI_STRINGS.MAIN_NAV.fr[7] as string, labelAr: UI_STRINGS.MAIN_NAV.ar[7] as string, labelEn: UI_STRINGS.MAIN_NAV.en[7] as string, roles: ['owner', 'manager', 'agent', 'field_agent'] },
   { href: '/map', label: UI_STRINGS.MAIN_NAV.fr[8] as string, labelAr: UI_STRINGS.MAIN_NAV.ar[8] as string, labelEn: UI_STRINGS.MAIN_NAV.en[8] as string, roles: ['owner', 'manager', 'agent', 'field_agent'] },
   { href: '/focus', label: FOCUS_STRINGS.fr.title, labelAr: FOCUS_STRINGS.ar.title, labelEn: FOCUS_STRINGS.en.title, roles: ['agent', 'field_agent'] },
@@ -29,42 +27,37 @@ const NAV: NavEntry[] = [
   { href: '/alerts', label: UI_STRINGS.MAIN_NAV.fr[12] as string, labelAr: UI_STRINGS.MAIN_NAV.ar[12] as string, labelEn: UI_STRINGS.MAIN_NAV.en[12] as string, roles: ['owner', 'manager', 'agent', 'accountant'] },
 ];
 
-function readLang(): Lang {
-  const match = document.cookie.match(/(?:^|;\s*)locaos-lang=([^;]+)/);
-  if (match?.[1] === 'ar' || match?.[1] === 'en') return match[1];
-  return 'fr';
-}
-
 export default function Shell({ children, user, agency, role }: { children: React.ReactNode; user: string; agency: string; role: RoleKey }) {
   const path = usePathname();
   const router = useRouter();
-  const [lang, setLang] = useState<Lang>('fr');
-  const [density, setDensity] = useState<Density>('comfortable');
+  const [lang, setLang] = useState<Locale>('fr');
+  const [density, setDensityState] = useState<Density>('comfortable');
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
   useEffect(() => {
-    const nextLang = readLang();
-    setLang(nextLang);
-    document.documentElement.lang = nextLang;
-    document.documentElement.dir = nextLang === 'ar' ? 'rtl' : 'ltr';
-
-    const saved = window.localStorage.getItem('locaos-density');
-    if (saved === 'compact' || saved === 'comfortable' || saved === 'detailed') setDensity(saved);
+    const handleLanguage = (event: Event) => {
+      const next = (event as CustomEvent<Locale>).detail;
+      setLang(next);
+      document.documentElement.lang = next;
+      document.documentElement.dir = next === 'ar' ? 'rtl' : 'ltr';
+    };
+    const handleDensity = (event: Event) => setDensityState((event as CustomEvent<Density>).detail);
+    setLang(readLocale());
+    setDensityState(readDensity());
+    window.addEventListener(LANGUAGE_EVENT, handleLanguage);
+    window.addEventListener(DENSITY_EVENT, handleDensity);
+    return () => {
+      window.removeEventListener(LANGUAGE_EVENT, handleLanguage);
+      window.removeEventListener(DENSITY_EVENT, handleDensity);
+    };
   }, []);
 
-  useEffect(() => {
-    setMobileNavOpen(false);
-  }, [path]);
+  useEffect(() => setMobileNavOpen(false), [path]);
 
-  const handleLangChange = (next: Lang) => {
+  const handleLangChange = (next: Locale) => {
     setLang(next);
     document.documentElement.lang = next;
     document.documentElement.dir = next === 'ar' ? 'rtl' : 'ltr';
-  };
-
-  const setDensityMode = (next: Density) => {
-    window.localStorage.setItem('locaos-density', next);
-    setDensity(next);
   };
 
   const filteredNav = NAV.filter((entry) => entry.roles.includes(role));
@@ -81,59 +74,35 @@ export default function Shell({ children, user, agency, role }: { children: Reac
 
   return (
     <div className="layout">
-      <button
-        type="button"
-        className="mobile-menu-toggle"
-        aria-controls="primary-navigation"
-        aria-expanded={mobileNavOpen}
-        aria-label={mobileNavOpen ? closeMenuLabel : menuLabel}
-        onClick={() => setMobileNavOpen((open) => !open)}
-      >
+      <button type="button" className="mobile-menu-toggle" aria-controls="primary-navigation" aria-expanded={mobileNavOpen} aria-label={mobileNavOpen ? closeMenuLabel : menuLabel} onClick={() => setMobileNavOpen((open) => !open)}>
         <span aria-hidden="true">☰</span>
       </button>
-
-      {mobileNavOpen && (
-        <button
-          type="button"
-          className="mobile-menu-backdrop"
-          aria-label={closeMenuLabel}
-          onClick={() => setMobileNavOpen(false)}
-        />
-      )}
-
+      {mobileNavOpen && <button type="button" className="mobile-menu-backdrop" aria-label={closeMenuLabel} onClick={() => setMobileNavOpen(false)} />}
       <aside className={`side${mobileNavOpen ? ' open' : ''}`}>
         <div className="logo">loca<span>OS</span></div>
         <div className="agency">{agency}</div>
         <nav id="primary-navigation" className="nav" aria-label={lang === 'ar' ? 'التنقل الرئيسي' : lang === 'en' ? 'Primary navigation' : 'Navigation principale'}>
           {filteredNav.map((entry) => (
-            <Link
-              key={entry.href}
-              href={entry.href}
-              className={path === entry.href || (entry.href !== '/' && path.startsWith(entry.href)) ? 'active' : ''}
-              aria-current={path === entry.href ? 'page' : undefined}
-              onClick={() => setMobileNavOpen(false)}
-            >
+            <Link key={entry.href} href={entry.href} className={path === entry.href || (entry.href !== '/' && path.startsWith(entry.href)) ? 'active' : ''} aria-current={path === entry.href ? 'page' : undefined} onClick={() => setMobileNavOpen(false)}>
               <span>{labels(entry)}</span>
             </Link>
           ))}
         </nav>
         <LanguageSwitcher onLangChange={handleLangChange} />
-        <div style={{ position: 'absolute', bottom: 14, left: 10, right: 10 }}>
-          <div className="sub" style={{ marginBottom: 6 }}>{user}</div>
-          <button className="mini" style={{ width: '100%' }} onClick={logout}>{lang === 'ar' ? 'تسجيل الخروج' : lang === 'en' ? 'Log out' : 'Déconnexion'}</button>
-          <div style={{ marginTop: 10, textAlign: 'right' }}>
+        <div className="shell-footer">
+          <div className="sub shell-user">{user}</div>
+          <button className="mini shell-logout" onClick={logout}>{lang === 'ar' ? 'تسجيل الخروج' : lang === 'en' ? 'Log out' : 'Déconnexion'}</button>
+          <div className="shell-density">
             <span className="sub">{densityLabel}</span>
             <div role="group" aria-label={lang === 'ar' ? 'كثافة العرض' : lang === 'en' ? 'Display density' : 'Densité d’affichage'}>
-              <button type="button" aria-label="Compact" aria-pressed={density === 'compact'} onClick={() => setDensityMode('compact')}>C</button>
-              <button type="button" aria-label="Comfortable" aria-pressed={density === 'comfortable'} onClick={() => setDensityMode('comfortable')}>Co</button>
-              <button type="button" aria-label="Detailed" aria-pressed={density === 'detailed'} onClick={() => setDensityMode('detailed')}>D</button>
+              <button type="button" aria-label="Compact" aria-pressed={density === 'compact'} onClick={() => setDensity('compact')}>C</button>
+              <button type="button" aria-label="Comfortable" aria-pressed={density === 'comfortable'} onClick={() => setDensity('comfortable')}>Co</button>
+              <button type="button" aria-label="Detailed" aria-pressed={density === 'detailed'} onClick={() => setDensity('detailed')}>D</button>
             </div>
           </div>
         </div>
       </aside>
-      <main className="main">
-        {children}
-      </main>
+      <main className="main">{children}</main>
     </div>
   );
 }
