@@ -25,7 +25,7 @@ const NAV: NavEntry[] = [
   { href: '/focus', label: FOCUS_STRINGS.fr.title, labelAr: FOCUS_STRINGS.ar.title, labelEn: FOCUS_STRINGS.en.title, roles: ['agent', 'field_agent'] },
   { href: '/field', label: UI_STRINGS.MAIN_NAV.fr[9] as string, labelAr: UI_STRINGS.MAIN_NAV.ar[9] as string, labelEn: UI_STRINGS.MAIN_NAV.en[9] as string, roles: ['field_agent'] },
   { href: '/finance', label: UI_STRINGS.MAIN_NAV.fr[10] as string, labelAr: UI_STRINGS.MAIN_NAV.ar[10] as string, labelEn: UI_STRINGS.MAIN_NAV.en[10] as string, roles: ['owner', 'manager', 'accountant'] },
-  { href: '/reports', label: UI_STRINGS.MAIN_NAV.fr[11] as string, labelAr: UI_STRINGS.MAIN_NAV.en[11] as string, labelEn: UI_STRINGS.MAIN_NAV.en[11] as string, roles: ['owner', 'manager', 'agent', 'accountant'] },
+  { href: '/reports', label: UI_STRINGS.MAIN_NAV.fr[11] as string, labelAr: UI_STRINGS.MAIN_NAV.ar[11] as string, labelEn: UI_STRINGS.MAIN_NAV.en[11] as string, roles: ['owner', 'manager', 'agent', 'accountant'] },
   { href: '/alerts', label: UI_STRINGS.MAIN_NAV.fr[12] as string, labelAr: UI_STRINGS.MAIN_NAV.ar[12] as string, labelEn: UI_STRINGS.MAIN_NAV.en[12] as string, roles: ['owner', 'manager', 'agent', 'accountant'] },
 ];
 
