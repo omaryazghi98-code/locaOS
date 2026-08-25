@@ -21,10 +21,38 @@ const USER = 'locaos';
 const PASSWORD = process.env.PG_PASSWORD ?? 'locaos';
 const DATABASE = process.env.PG_DATABASE ?? 'locaos';
 
-// Dynamically determine the embedded-postgres platform package based on current OS.
 const PLATFORM = process.platform === 'win32' ? 'windows-x64' : process.platform === 'darwin' ? 'darwin-x64' : 'linux-x64';
 const NATIVE = join(ROOT, 'node_modules', '@embedded-postgres', PLATFORM, 'native', 'bin');
 const bin = (name) => join(NATIVE, name);
+
+function nativeExecutable(name) {
+  const path = `${bin(name)}${process.platform === 'win32' ? '.exe' : ''}`;
+  if (!existsSync(path)) {
+    throw new Error(`Embedded PostgreSQL executable not found: ${path}`);
+  }
+  return path;
+}
+
+function runNative(name, args, opts = {}) {
+  const executable = nativeExecutable(name);
+  const result = spawnSync(executable, args, {
+    stdio: 'pipe',
+    encoding: 'utf8',
+    windowsHide: true,
+    cwd: ROOT,
+    ...opts,
+  });
+
+  if (result.error) {
+    throw new Error(`Failed to execute ${name}: ${result.error.message}`);
+  }
+  if (result.status !== 0) {
+    const stdout = result.stdout?.trim();
+    const stderr = result.stderr?.trim();
+    throw new Error(`${name} exited with code ${result.status ?? 'unknown'}${stderr ? `: ${stderr}` : stdout ? `: ${stdout}` : ''}`);
+  }
+  return result;
+}
 
 async function isPostgres() {
   const c = new pg.Client({ host: '127.0.0.1', port: PORT, user: USER, password: PASSWORD, database: 'postgres', connectionTimeoutMillis: 1500 });
@@ -49,39 +77,52 @@ async function ensureDatabase() {
 }
 
 if (MODE === 'start') {
-  if (await isPostgres()) { console.log(`db: already running on :${PORT}`); process.exit(0); }
-  if (!existsSync(join(DIR, 'PG_VERSION'))) {
-    console.log('db: initialising cluster…');
-    const pwfile = join(mkdtempSync(join(tmpdir(), 'locaos-pw-')), 'pw');
-    writeFileSync(pwfile, PASSWORD);
-    const init = spawnSync(bin('initdb'), ['-D', DIR, '-U', USER, '-A', 'password', `--pwfile=${pwfile}`, '-E', 'UTF8'], { encoding: 'utf8' });
-    rmSync(join(pwfile, '..'), { recursive: true, force: true });
-    if (init.status !== 0) { console.error(init.stdout, init.stderr); process.exit(1); }
-    writeFileSync(join(DIR, 'pg_hba.conf'), `local all all trust\nhost all all 127.0.0.1/32 password\nhost all all ::1/128 password\n`);
-    appendFileSync(join(DIR, 'postgresql.conf'),
-      `\nport = ${PORT}\nlisten_addresses = '127.0.0.1'\nunix_socket_directories = '${DIR.replace(/'/g, "''")}'\n`);
+  try {
+    if (await isPostgres()) { console.log(`db: already running on :${PORT}`); process.exit(0); }
+    if (!existsSync(join(DIR, 'PG_VERSION'))) {
+      console.log('db: initialising cluster…');
+      const pwDir = mkdtempSync(join(tmpdir(), 'locaos-pw-'));
+      const pwfile = join(pwDir, 'pw');
+      writeFileSync(pwfile, PASSWORD);
+      try {
+        runNative('initdb', ['-D', DIR, '-U', USER, '-A', 'password', `--pwfile=${pwfile}`, '-E', 'UTF8']);
+      } finally {
+        rmSync(pwDir, { recursive: true, force: true });
+      }
+      writeFileSync(join(DIR, 'pg_hba.conf'), `local all all trust\nhost all all 127.0.0.1/32 password\nhost all all ::1/128 password\n`);
+      appendFileSync(join(DIR, 'postgresql.conf'),
+        `\nport = ${PORT}\nlisten_addresses = '127.0.0.1'\nunix_socket_directories = '${DIR.replace(/'/g, "''")}'\n`);
+    }
+    const pgCtl = nativeExecutable('pg_ctl');
+    const child = spawn(pgCtl, ['-D', DIR, '-l', LOG, '-w', 'start'], { detached: true, stdio: 'ignore', windowsHide: true });
+    child.unref();
+    if (!(await waitForPostgres())) { console.error('db: failed to start — see', LOG); process.exit(1); }
+    await ensureDatabase();
+    const r = spawnSync('node', [join(ROOT, 'scripts', 'provision-app-role.mjs')], {
+      env: { ...process.env, DATABASE_URL: `postgresql://${USER}:${PASSWORD}@127.0.0.1:${PORT}/${DATABASE}` },
+      stdio: 'inherit', cwd: ROOT,
+    });
+    if (r.status !== 0) process.exit(1);
+    console.log(`db: ready — postgresql://${USER}:****@127.0.0.1:${PORT}/${DATABASE} (app: locaos_app)`);
+    process.exit(0);
+  } catch (error) {
+    console.error('db: start failed:', error instanceof Error ? error.message : String(error));
+    process.exit(1);
   }
-  const child = spawn(bin('pg_ctl'), ['-D', DIR, '-l', LOG, '-w', 'start'], { detached: true, stdio: 'ignore' });
-  child.unref();
-  if (!(await waitForPostgres())) { console.error('db: failed to start — see', LOG); process.exit(1); }
-  await ensureDatabase();
-  const r = spawnSync('node', [join(ROOT, 'scripts', 'provision-app-role.mjs')], {
-    env: { ...process.env, DATABASE_URL: `postgresql://${USER}:${PASSWORD}@127.0.0.1:${PORT}/${DATABASE}` },
-    stdio: 'inherit', cwd: ROOT,
-  });
-  if (r.status !== 0) process.exit(1);
-  console.log(`db: ready — postgresql://${USER}:****@127.0.0.1:${PORT}/${DATABASE} (app: locaos_app)`);
-  process.exit(0);
 }
 
 if (MODE === 'stop') {
-  const r = spawnSync(bin('pg_ctl'), ['-D', DIR, '-m', 'fast', 'stop'], { encoding: 'utf8' });
-  console.log(r.status === 0 ? 'db: stopped' : 'db: stop failed (not running?)');
+  try {
+    const r = runNative('pg_ctl', ['-D', DIR, '-m', 'fast', 'stop']);
+    console.log(r.status === 0 ? 'db: stopped' : 'db: stop failed (not running?)');
+  } catch (error) {
+    console.error('db: stop failed:', error instanceof Error ? error.message : String(error));
+  }
   process.exit(0);
 }
 
 if (MODE === 'reset') {
-  spawnSync(bin('pg_ctl'), ['-D', DIR, '-m', 'immediate', 'stop'], { encoding: 'utf8' });
+  try { runNative('pg_ctl', ['-D', DIR, '-m', 'immediate', 'stop']); } catch {}
   if (existsSync(DIR)) rmSync(DIR, { recursive: true, force: true });
   console.log('db: data directory removed');
   process.exit(0);
