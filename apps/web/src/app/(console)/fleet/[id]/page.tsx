@@ -33,7 +33,11 @@ export default async function VehicleDetail({ params }: { params: Promise<{ id: 
         <h1 className="mono">{v.plate}</h1>
         <div className="sub">{d.model ? `${d.model.make} ${d.model.model} ${d.model.year} · ${d.model.fuelType}` : ''} · {d.category?.name} · VIN {v.vin}</div>
       </div>
-        <span className={`pill ${v.operationalStatus === 'AVAILABLE' ? 'ok' : v.operationalStatus === 'RENTED' ? 'info' : 'warn'}`}>{v.operationalStatus}</span></div>
+        <div className="btnrow"><span className={`pill ${v.operationalStatus === 'AVAILABLE' ? 'ok' : v.operationalStatus === 'RENTED' ? 'info' : 'warn'}`}>{v.operationalStatus}</span>
+          {d.currentContract && <a className="btn mini" href={`/api/contracts/${d.currentContract.id}/pdf`} target="_blank" rel="noreferrer">Contrat / PDF</a>}
+          {d.nextReservation && !d.currentContract && <a className="btn mini" href={`/reservations/${d.nextReservation.id}`}>Préparer contrat</a>}
+        </div>
+      </div>
 
       <div className="grid cards">
         <div className="card"><div className="k">Kilométrage</div><div className="v">{v.currentMileageKm.toLocaleString('fr-MA')} km</div></div>
