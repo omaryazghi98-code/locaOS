@@ -16,6 +16,8 @@ export function readLocale(): Locale {
 
 export function setLocale(locale: Locale) {
   document.cookie = `${LANGUAGE_COOKIE}=${locale};path=/;max-age=31536000;SameSite=Lax`;
+  document.documentElement.lang = locale;
+  document.documentElement.dir = locale === 'ar' ? 'rtl' : 'ltr';
   window.dispatchEvent(new CustomEvent<Locale>(LANGUAGE_EVENT, { detail: locale }));
 }
 
