@@ -16,6 +16,7 @@ export const AMENDMENT_KINDS = ['VEHICLE_REPLACEMENT', 'PERIOD', 'DRIVER', 'PRIC
 export type AmendmentKind = (typeof AMENDMENT_KINDS)[number];
 
 const empty = z.string().nullable();
+const optionalEmpty = empty.default(null);
 
 export const InsuranceBlock = z.object({
   franchiseAmount: z.preprocess((v) => (typeof v === 'string' ? BigInt(v) : v), z.bigint().nullable()),
@@ -31,6 +32,15 @@ export const CrossBorderBlock = z.object({
   admissionTemporaireRef: empty,
 });
 
+const Snapshot = z.object({
+  capturedAt: z.string(),
+  reservationId: empty,
+  quoteId: empty,
+  quoteVersion: optionalEmpty,
+  departureInspectionId: empty,
+  returnInspectionId: empty,
+});
+
 export const ContractContent = z.object({
   header: z.object({
     agencyName: z.string(),
@@ -41,13 +51,10 @@ export const ContractContent = z.object({
     language: z.enum(CONTRACT_LANGUAGES),
     mode: z.enum(['FULL', 'BLANK']),
   }),
-  snapshot: z.object({
-    capturedAt: z.string(),
-    reservationId: empty,
-    quoteId: empty,
-    quoteVersion: z.string().nullable(),
-    departureInspectionId: empty,
-    returnInspectionId: empty,
+  // Defaults keep historical contract_versions readable after the snapshot schema was tightened.
+  snapshot: Snapshot.default({
+    capturedAt: '', reservationId: null, quoteId: null, quoteVersion: null,
+    departureInspectionId: null, returnInspectionId: null,
   }),
   customer: z.object({
     name: empty, cinOrPassport: empty, licenseNumber: empty, licenseIssuedOn: empty,
@@ -60,9 +67,9 @@ export const ContractContent = z.object({
   }),
   period: z.object({ pickupAt: empty, returnAt: empty, days: empty, pickupBranch: empty, returnBranch: empty }),
   pricing: z.object({
-    subtotal: empty, dailyRate: empty, days: empty, discount: empty, total: empty, currency: z.string().default('MAD'),
+    subtotal: optionalEmpty, dailyRate: empty, days: empty, discount: empty, total: empty, currency: z.string().default('MAD'),
   }),
-  deposit: z.object({ amount: empty, method: empty, status: empty, heldAt: empty }),
+  deposit: z.object({ amount: empty, method: empty, status: optionalEmpty, heldAt: empty }),
   insurance: InsuranceBlock,
   crossBorder: CrossBorderBlock,
   mileageFuel: z.object({
@@ -91,10 +98,11 @@ export function blankContractContent(args: {
   contractNumber: string; language: ContractLanguage;
 }): ContractContent {
   const b = (v: string | null = null) => v;
+  const capturedAt = new Date().toISOString();
   return ContractContent.parse({
-    header: { ...args, issuedAt: new Date().toISOString(), mode: 'BLANK' },
+    header: { ...args, issuedAt: capturedAt, mode: 'BLANK' },
     snapshot: {
-      capturedAt: new Date().toISOString(), reservationId: b(), quoteId: b(), quoteVersion: null,
+      capturedAt, reservationId: b(), quoteId: b(), quoteVersion: null,
       departureInspectionId: b(), returnInspectionId: b(),
     },
     customer: { name: b(), cinOrPassport: b(), licenseNumber: b(), licenseIssuedOn: b(), phone: b(), email: b(), address: b(), birthDate: b() },
