@@ -1,6 +1,6 @@
 /**
- * PDF service (ADR-0007): headless Chromium via puppeteer-core + @sparticuz/chromium
- * (npm-distributed binary — see ADR-0011; CHROMIUM_EXECUTABLE overrides for a system install).
+ * PDF service (ADR-0007): Puppeteer + local Chrome for desktop development,
+ * @sparticuz/chromium for Linux/serverless environments.
  * Arabic (RTL + shaping) and Latin render through embedded @font-face TTFs.
  */
 import { readFileSync, mkdirSync, existsSync, writeFileSync } from 'node:fs';
@@ -40,6 +40,27 @@ export function ensureChromiumLibs(): string | null {
   }
 }
 
+function findLocalBrowser(): string | null {
+  if (env.chromiumExecutable && existsSync(env.chromiumExecutable)) return env.chromiumExecutable;
+
+  const candidates = process.platform === 'win32'
+    ? [
+        join(process.env.PROGRAMFILES ?? 'C:\\Program Files', 'Google', 'Chrome', 'Application', 'chrome.exe'),
+        join(process.env['PROGRAMFILES(X86)'] ?? 'C:\\Program Files (x86)', 'Google', 'Chrome', 'Application', 'chrome.exe'),
+        join(process.env.LOCALAPPDATA ?? '', 'Google', 'Chrome', 'Application', 'chrome.exe'),
+        join(process.env.PROGRAMFILES ?? 'C:\\Program Files', 'Microsoft', 'Edge', 'Application', 'msedge.exe'),
+        join(process.env['PROGRAMFILES(X86)'] ?? 'C:\\Program Files (x86)', 'Microsoft', 'Edge', 'Application', 'msedge.exe'),
+      ]
+    : process.platform === 'darwin'
+      ? [
+          '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+          '/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge',
+        ]
+      : [];
+
+  return candidates.find((path) => path && existsSync(path)) ?? null;
+}
+
 let fontsCache: { latin: string; latinBold: string; arabic: string; arabicBold: string } | null = null;
 
 async function loadFonts() {
@@ -61,10 +82,17 @@ let browserPromise: Promise<Browser> | null = null;
 
 async function getBrowser(): Promise<Browser> {
   if (!browserPromise) {
-    const libs = ensureChromiumLibs();
+    const localBrowser = findLocalBrowser();
+    const useLocalBrowser = Boolean(localBrowser);
+    const libs = useLocalBrowser ? null : ensureChromiumLibs();
+
+    if (!useLocalBrowser && process.platform !== 'linux') {
+      throw new Error('PDF browser unavailable: set CHROMIUM_EXECUTABLE to a local Chrome/Chromium binary.');
+    }
+
     browserPromise = puppeteer.launch({
-      executablePath: env.chromiumExecutable || await chromium.executablePath(),
-      args: [...chromium.args, '--no-sandbox', '--disable-dev-shm-usage', '--disable-gpu'],
+      executablePath: localBrowser ?? await chromium.executablePath(),
+      args: useLocalBrowser ? [] : [...chromium.args, '--no-sandbox', '--disable-dev-shm-usage', '--disable-gpu'],
       env: libs ? { ...process.env, LD_LIBRARY_PATH: `${libs}/lib:${process.env.LD_LIBRARY_PATH ?? ''}` } : process.env,
       headless: true,
     }).then((b) => {
