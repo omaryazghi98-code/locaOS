@@ -1,5 +1,7 @@
+import { cookies } from 'next/headers';
 import { apiFetch } from '@/lib/api';
 import ActionButton from '@/components/ActionButton';
+import ContractFromReservationButton from '@/components/ContractFromReservationButton';
 
 interface Detail {
   reservation: { id: string; reference: string; status: string; pickupAt: string; returnAt: string; flightNumber: string | null; notes: string | null; vehicleId: string | null };
@@ -15,6 +17,14 @@ export default async function ReservationDetail({ params }: { params: Promise<{ 
   const d = await apiFetch<Detail>(`/api/reservations/${id}`);
   const r = d.reservation;
   const q = d.quotes[0];
+  const cookieStore = await cookies();
+  const rawLang = cookieStore.get('locaos-lang')?.value;
+  const language = rawLang === 'ar' ? 'ar' : rawLang === 'en' ? 'en' : 'fr';
+  const labels = {
+    fr: { contract: 'Préparer / imprimer le contrat', noVehicle: 'Affectez un véhicule depuis la flotte pour préparer le contrat.' },
+    ar: { contract: 'إعداد / طباعة العقد', noVehicle: 'قم بتعيين سيارة من الأسطول لإعداد العقد.' },
+    en: { contract: 'Prepare / print contract', noVehicle: 'Assign a vehicle from the fleet to prepare the contract.' },
+  } as const;
   const fmt = (s: string) => new Intl.DateTimeFormat('fr-MA', { timeZone: 'Africa/Casablanca', dateStyle: 'short', timeStyle: 'short' }).format(new Date(s));
   const mad = (v?: string) => new Intl.NumberFormat('fr-MA').format(Number(v ?? 0) / 100) + ' MAD';
 
@@ -49,7 +59,7 @@ export default async function ReservationDetail({ params }: { params: Promise<{ 
             </div>
           ) : <div className="sub">Aucun devis.</div>}
           <div className="btnrow">
-            {!d.vehicle && <span className="sub">Affectez un véhicule depuis la flotte pour préparer le contrat.</span>}
+            {!d.vehicle && <span className="sub">{labels[language].noVehicle}</span>}
           </div>
         </div>
       </div>
@@ -59,8 +69,7 @@ export default async function ReservationDetail({ params }: { params: Promise<{ 
         {['DRAFT', 'CONFIRMED', 'VEHICLE_ASSIGNED', 'READY'].includes(r.status) && (
           <ActionButton path={`/api/reservations/${r.id}/status`} body={{ to: 'CANCELLED' }} label="Annuler" variant="danger" promptLabel="Motif d'annulation" promptField="reason" />
         )}
-        <ActionButton path="/api/contracts/from-reservation" body={{ reservationId: r.id, language: 'fr' }} label="Générer le contrat" />
-        <ActionButton path="/api/contracts/from-reservation" body={{ reservationId: r.id, language: 'ar' }} label="Générer (arabe)" />
+        {d.vehicle && <ContractFromReservationButton reservationId={r.id} language={language} label={labels[language].contract} />}
         <a className="btn mini" href={`/field?reservationId=${r.id}&kind=DEPARTURE`}>Inspection départ</a>
       </div>
     </div>
