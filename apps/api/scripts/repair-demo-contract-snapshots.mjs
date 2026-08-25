@@ -29,11 +29,12 @@ try {
       q.subtotal,
       q.discount,
       q.total,
-      q.currency,
-      q.inputs
+      q.inputs,
+      a.currency as agency_currency
     from contracts c
     join reservations r on r.id = c.reservation_id
     join quotes q on q.id = r.quote_id
+    join agencies a on a.id = c.agency_id
     where c.current_version_id is not null
   `);
 
@@ -67,7 +68,7 @@ try {
       days: String(derivedDays),
       discount: money(row.discount),
       total: money(row.total),
-      currency: row.currency ?? content.pricing.currency ?? 'MAD',
+      currency: row.agency_currency ?? content.pricing.currency ?? 'MAD',
     };
     content.snapshot = {
       ...(content.snapshot ?? {}),
