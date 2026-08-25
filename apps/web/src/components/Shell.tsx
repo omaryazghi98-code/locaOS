@@ -73,36 +73,45 @@ export default function Shell({ children, user, agency, role }: { children: Reac
   };
 
   return (
-    <div className="layout">
-      <button type="button" className="mobile-menu-toggle" aria-controls="primary-navigation" aria-expanded={mobileNavOpen} aria-label={mobileNavOpen ? closeMenuLabel : menuLabel} onClick={() => setMobileNavOpen((open) => !open)}>
-        <span aria-hidden="true">☰</span>
-      </button>
-      {mobileNavOpen && <button type="button" className="mobile-menu-backdrop" aria-label={closeMenuLabel} onClick={() => setMobileNavOpen(false)} />}
-      <aside className={`side${mobileNavOpen ? ' open' : ''}`}>
-        <div className="logo">loca<span>OS</span></div>
-        <div className="agency">{agency}</div>
-        <nav id="primary-navigation" className="nav" aria-label={lang === 'ar' ? 'التنقل الرئيسي' : lang === 'en' ? 'Primary navigation' : 'Navigation principale'}>
-          {filteredNav.map((entry) => (
-            <Link key={entry.href} href={entry.href} className={path === entry.href || (entry.href !== '/' && path.startsWith(entry.href)) ? 'active' : ''} aria-current={path === entry.href ? 'page' : undefined} onClick={() => setMobileNavOpen(false)}>
-              <span>{labels(entry)}</span>
-            </Link>
-          ))}
-        </nav>
-        <LanguageSwitcher onLangChange={handleLangChange} />
-        <div className="shell-footer">
-          <div className="sub shell-user">{user}</div>
-          <button className="mini shell-logout" onClick={logout}>{lang === 'ar' ? 'تسجيل الخروج' : lang === 'en' ? 'Log out' : 'Déconnexion'}</button>
-          <div className="shell-density">
-            <span className="sub">{densityLabel}</span>
-            <div role="group" aria-label={lang === 'ar' ? 'كثافة العرض' : lang === 'en' ? 'Display density' : 'Densité d’affichage'}>
-              <button type="button" aria-label="Compact" aria-pressed={density === 'compact'} onClick={() => setDensity('compact')}>C</button>
-              <button type="button" aria-label="Comfortable" aria-pressed={density === 'comfortable'} onClick={() => setDensity('comfortable')}>Co</button>
-              <button type="button" aria-label="Detailed" aria-pressed={density === 'detailed'} onClick={() => setDensity('detailed')}>D</button>
+    <>
+      <style>{`
+        @media (min-width: 768px) and (max-width: 1100px) {
+          .layout { grid-template-columns: 228px minmax(0, 1fr); }
+          .side { width: 228px; padding-inline: 10px; }
+          .side .agency, .side .sub, .side nav a span, .side .lang-label { display: block; }
+          .side .logo { text-align: start; margin-inline: 8px; }
+          .nav a { text-align: start; padding-inline: 10px; min-height: 40px; display: flex; align-items: center; }
+          .main { padding-inline: 18px; }
+          .shell-footer { position: relative !important; inset: auto !important; margin-top: 18px; }
+        }
+      `}</style>
+      <div className="layout">
+        <button type="button" className="mobile-menu-toggle" aria-controls="primary-navigation" aria-expanded={mobileNavOpen} aria-label={mobileNavOpen ? closeMenuLabel : menuLabel} onClick={() => setMobileNavOpen((open) => !open)}>
+          <span aria-hidden="true">☰</span>
+        </button>
+        {mobileNavOpen && <button type="button" className="mobile-menu-backdrop" aria-label={closeMenuLabel} onClick={() => setMobileNavOpen(false)} />}
+        <aside className={`side${mobileNavOpen ? ' open' : ''}`}>
+          <div className="logo">loca<span>OS</span></div>
+          <div className="agency">{agency}</div>
+          <nav id="primary-navigation" className="nav" aria-label={lang === 'ar' ? 'التنقل الرئيسي' : lang === 'en' ? 'Primary navigation' : 'Navigation principale'}>
+            {filteredNav.map((entry) => <Link key={entry.href} href={entry.href} className={path === entry.href || (entry.href !== '/' && path.startsWith(entry.href)) ? 'active' : ''} aria-current={path === entry.href ? 'page' : undefined} onClick={() => setMobileNavOpen(false)}><span>{labels(entry)}</span></Link>)}
+          </nav>
+          <LanguageSwitcher onLangChange={handleLangChange} />
+          <div className="shell-footer">
+            <div className="sub shell-user">{user}</div>
+            <button className="mini shell-logout" onClick={logout}>{lang === 'ar' ? 'تسجيل الخروج' : lang === 'en' ? 'Log out' : 'Déconnexion'}</button>
+            <div className="shell-density">
+              <span className="sub">{densityLabel}</span>
+              <div role="group" aria-label={lang === 'ar' ? 'كثافة العرض' : lang === 'en' ? 'Display density' : 'Densité d’affichage'}>
+                <button type="button" aria-label="Compact" aria-pressed={density === 'compact'} onClick={() => setDensity('compact')}>C</button>
+                <button type="button" aria-label="Comfortable" aria-pressed={density === 'comfortable'} onClick={() => setDensity('comfortable')}>Co</button>
+                <button type="button" aria-label="Detailed" aria-pressed={density === 'detailed'} onClick={() => setDensity('detailed')}>D</button>
+              </div>
             </div>
           </div>
-        </div>
-      </aside>
-      <main id="app-content" className="main">{children}</main>
-    </div>
+        </aside>
+        <main id="app-content" className="main">{children}</main>
+      </div>
+    </>
   );
 }
