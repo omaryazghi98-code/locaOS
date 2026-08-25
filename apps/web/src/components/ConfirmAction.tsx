@@ -4,18 +4,22 @@ import { useCallback, useEffect, useId, useRef, useState } from 'react';
 
 type ConfirmActionProps = {
   label: string;
-  confirmText?: string;
+  confirmText: string;
   onConfirm: () => void;
   variant?: 'primary' | 'danger' | 'mini';
   ariaLabel?: string;
+  cancelLabel?: string;
+  confirmLabel?: string;
 };
 
 export function ConfirmAction({
   label,
-  confirmText = 'Confirmer cette action',
+  confirmText,
   onConfirm,
   variant = 'danger',
   ariaLabel,
+  cancelLabel = 'Annuler',
+  confirmLabel = 'OK',
 }: ConfirmActionProps) {
   const [open, setOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement | null>(null);
@@ -30,8 +34,6 @@ export function ConfirmAction({
 
   useEffect(() => {
     if (!open) return;
-
-    const dialog = dialogRef.current;
     cancelRef.current?.focus();
 
     const handleKeydown = (event: KeyboardEvent) => {
@@ -40,29 +42,22 @@ export function ConfirmAction({
         close();
         return;
       }
+      if (event.key !== 'Tab') return;
 
-      if (event.key !== 'Tab' || !dialog) return;
-
+      const dialog = dialogRef.current;
+      if (!dialog) return;
       const focusable = Array.from(
-        dialog.querySelectorAll<HTMLElement>(
-          'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
-        ),
-      ).filter((element) => !element.hasAttribute('disabled') && element.offsetParent !== null);
-
-      if (focusable.length === 0) {
-        event.preventDefault();
-        return;
-      }
+        dialog.querySelectorAll<HTMLElement>('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'),
+      ).filter((element) => !element.hasAttribute('disabled') && element.getClientRects().length > 0);
 
       const first = focusable[0];
       const last = focusable[focusable.length - 1];
       if (!first || !last) return;
-      const active = document.activeElement;
 
-      if (event.shiftKey && active === first) {
+      if (event.shiftKey && document.activeElement === first) {
         event.preventDefault();
         last.focus();
-      } else if (!event.shiftKey && active === last) {
+      } else if (!event.shiftKey && document.activeElement === last) {
         event.preventDefault();
         first.focus();
       }
@@ -87,37 +82,27 @@ export function ConfirmAction({
         onClick={() => setOpen(true)}
         aria-label={ariaLabel ?? label}
         aria-haspopup="dialog"
+        aria-expanded={open}
       >
         {label}
       </button>
 
       {open && (
-        <div
-          role="presentation"
-          className="confirm-overlay"
-          style={{
-            position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', display: 'flex',
-            alignItems: 'center', justifyContent: 'center', padding: '24px', zIndex: 1000, overflow: 'auto',
-          }}
-          onMouseDown={(event) => { if (event.target === event.currentTarget) close(); }}
-        >
+        <div className="confirm-overlay" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) close(); }}>
           <div
             ref={dialogRef}
+            className="confirm-dialog"
             role="dialog"
             aria-modal="true"
             aria-labelledby={titleId}
             tabIndex={-1}
-            style={{
-              background: 'var(--panel)', border: '1px solid var(--line)', borderRadius: '6px',
-              padding: '24px', maxWidth: '400px', width: '100%', maxHeight: 'calc(100vh - 48px)', overflow: 'auto',
-            }}
             onMouseDown={(event) => event.stopPropagation()}
           >
-            <h3 id={titleId} style={{ margin: '0 0 16px', fontSize: '14px' }}>{label}</h3>
-            <p style={{ color: 'var(--muted)', margin: '0 0 20px', fontSize: '13px' }}>{confirmText}</p>
-            <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
-              <button ref={cancelRef} type="button" className="btn mini" onClick={close}>Annuler</button>
-              <button type="button" className="btn mini primary" onClick={confirm}>OK</button>
+            <h3 id={titleId}>{label}</h3>
+            <p>{confirmText}</p>
+            <div className="confirm-actions">
+              <button ref={cancelRef} type="button" className="btn mini" onClick={close}>{cancelLabel}</button>
+              <button type="button" className="btn mini primary" onClick={confirm}>{confirmLabel}</button>
             </div>
           </div>
         </div>
