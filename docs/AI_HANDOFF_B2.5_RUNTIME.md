@@ -60,6 +60,19 @@ Workflow rule:
 - Unknown fields remain printable blanks for handwriting; do not ask the operator to duplicate data already present in the booking/rental context.
 - Printing must not create or modify financial ledger records.
 
+### PDF renderer — Windows local development
+Observed: `/api/contracts/:id/pdf` returned `{"error":{"code":"INTERNAL","message":"Erreur interne"}}` on Windows.
+
+Root cause: the API always tried to launch `@sparticuz/chromium`. The package documentation states that its bundled Chromium is Linux-only and does not work on Windows/macOS; local development should use a locally installed browser. citeturn327205search0turn327205search2
+
+Correction committed:
+- `2c2ae575` — `fix(pdf): use local Chrome on Windows and macOS`
+- PDF browser selection now honors `CHROMIUM_EXECUTABLE`, otherwise auto-detects installed Chrome/Edge on Windows and Chrome/Edge on macOS.
+- The bundled Sparticuz browser remains the Linux/server fallback.
+- Local browser launches use local-browser args rather than the Linux serverless Chromium args.
+
+**Not yet manually verified after this fix.** The next required test is a real FR contract PDF and then an AR contract PDF.
+
 ### Morocco contract example / template
 The existing backend template is already Morocco-oriented and is explicitly documented as common Moroccan agency practice, not legal advice. It contains fields for agency identity/ICE, CIN/passport, driving licence, vehicle/VIN, rental period, pricing, deposit, insurance/deductible, mileage/fuel, cross-border authorization, additional drivers, CNDP-related consent fields, and signatures.
 
@@ -67,8 +80,8 @@ External research used for this audit indicates that Moroccan rental-contract pr
 
 ## Still open — must be audited before declaring B2.5 complete
 
-1. Systematically test every visible button/action on the console and identify true no-op actions vs role-gated/invalid-state actions.
-2. Test the PDF endpoint from a real contract in FR and AR; capture the exact API error if Chromium/PDF generation fails.
+1. Pull and manually verify the Windows PDF renderer correction with a real FR contract, then an AR contract.
+2. Systematically test every visible button/action on the console and identify true no-op actions vs role-gated/invalid-state actions.
 3. Verify Arabic persistence with: switch to AR → navigate to another page → hard refresh → verify `<html dir="rtl">` and sidebar on the right.
 4. Audit all pages for mixed-language strings after switching FR/EN/AR; do not assume the Shell translation implies page translation.
 5. Test tablet at 1024×768 and 768×1024.
