@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { UI_STRINGS, FOCUS_STRINGS } from '@locaos/domain/i18n';
 import { ROLE_KEYS, type RoleKey } from '@locaos/domain/permissions';
 import { LanguageSwitcher } from './LanguageSwitcher';
@@ -30,6 +30,7 @@ const NAV: NavEntry[] = [
 export default function Shell({ children, user, agency, role }: { children: React.ReactNode; user: string; agency: string; role: RoleKey }) {
   const path = usePathname();
   const router = useRouter();
+  const menuButtonRef = useRef<HTMLButtonElement | null>(null);
   const [lang, setLang] = useState<Locale>('fr');
   const [density, setDensityState] = useState<Density>('comfortable');
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
@@ -42,22 +43,38 @@ export default function Shell({ children, user, agency, role }: { children: Reac
       document.documentElement.dir = next === 'ar' ? 'rtl' : 'ltr';
     };
     const handleDensity = (event: Event) => setDensityState((event as CustomEvent<Density>).detail);
+    const setDocumentOverflow = () => { document.body.style.overflowX = 'clip'; };
     setLang(readLocale());
     setDensityState(readDensity());
+    setDocumentOverflow();
     window.addEventListener(LANGUAGE_EVENT, handleLanguage);
     window.addEventListener(DENSITY_EVENT, handleDensity);
     return () => {
       window.removeEventListener(LANGUAGE_EVENT, handleLanguage);
       window.removeEventListener(DENSITY_EVENT, handleDensity);
+      document.body.style.removeProperty('overflow-x');
     };
   }, []);
 
-  useEffect(() => setMobileNavOpen(false), [path]);
+  useEffect(() => {
+    setMobileNavOpen(false);
+    requestAnimationFrame(() => menuButtonRef.current?.focus());
+  }, [path]);
+
+  useEffect(() => {
+    if (!mobileNavOpen) return;
+    requestAnimationFrame(() => document.querySelector<HTMLElement>('#primary-navigation a')?.focus());
+  }, [mobileNavOpen]);
 
   const handleLangChange = (next: Locale) => {
     setLang(next);
     document.documentElement.lang = next;
     document.documentElement.dir = next === 'ar' ? 'rtl' : 'ltr';
+  };
+
+  const closeMobileNav = () => {
+    setMobileNavOpen(false);
+    requestAnimationFrame(() => menuButtonRef.current?.focus());
   };
 
   const filteredNav = NAV.filter((entry) => entry.roles.includes(role));
@@ -74,27 +91,17 @@ export default function Shell({ children, user, agency, role }: { children: Reac
 
   return (
     <>
-      <style>{`
-        @media (min-width: 768px) and (max-width: 1100px) {
-          .layout { grid-template-columns: 228px minmax(0, 1fr); }
-          .side { width: 228px; padding-inline: 10px; }
-          .side .agency, .side .sub, .side nav a span, .side .lang-label { display: block; }
-          .side .logo { text-align: start; margin-inline: 8px; }
-          .nav a { text-align: start; padding-inline: 10px; min-height: 40px; display: flex; align-items: center; }
-          .main { padding-inline: 18px; }
-          .shell-footer { position: relative !important; inset: auto !important; margin-top: 18px; }
-        }
-      `}</style>
+      <style>{`@media (min-width: 768px) and (max-width: 1100px) { .layout{grid-template-columns:228px minmax(0,1fr)} .side{width:228px;padding-inline:10px} .side .agency,.side .sub,.side nav a span,.side .lang-label{display:block} .side .logo{text-align:start;margin-inline:8px} .nav a{text-align:start;padding-inline:10px;min-height:40px;display:flex;align-items:center} .main{padding-inline:18px} .shell-footer{position:relative!important;inset:auto!important;margin-top:18px} } @media (max-width:767px){ .side:not(.open){visibility:hidden;pointer-events:none} }`}</style>
       <div className="layout">
-        <button type="button" className="mobile-menu-toggle" aria-controls="primary-navigation" aria-expanded={mobileNavOpen} aria-label={mobileNavOpen ? closeMenuLabel : menuLabel} onClick={() => setMobileNavOpen((open) => !open)}>
+        <button ref={menuButtonRef} type="button" className="mobile-menu-toggle" aria-controls="primary-navigation" aria-expanded={mobileNavOpen} aria-label={mobileNavOpen ? closeMenuLabel : menuLabel} onClick={() => setMobileNavOpen((open) => !open)}>
           <span aria-hidden="true">☰</span>
         </button>
-        {mobileNavOpen && <button type="button" className="mobile-menu-backdrop" aria-label={closeMenuLabel} onClick={() => setMobileNavOpen(false)} />}
+        {mobileNavOpen && <button type="button" className="mobile-menu-backdrop" aria-label={closeMenuLabel} onClick={closeMobileNav} />}
         <aside className={`side${mobileNavOpen ? ' open' : ''}`}>
           <div className="logo">loca<span>OS</span></div>
           <div className="agency">{agency}</div>
           <nav id="primary-navigation" className="nav" aria-label={lang === 'ar' ? 'التنقل الرئيسي' : lang === 'en' ? 'Primary navigation' : 'Navigation principale'}>
-            {filteredNav.map((entry) => <Link key={entry.href} href={entry.href} className={path === entry.href || (entry.href !== '/' && path.startsWith(entry.href)) ? 'active' : ''} aria-current={path === entry.href ? 'page' : undefined} onClick={() => setMobileNavOpen(false)}><span>{labels(entry)}</span></Link>)}
+            {filteredNav.map((entry) => <Link key={entry.href} href={entry.href} className={path === entry.href || (entry.href !== '/' && path.startsWith(entry.href)) ? 'active' : ''} aria-current={path === entry.href ? 'page' : undefined} onClick={closeMobileNav}><span>{labels(entry)}</span></Link>)}
           </nav>
           <LanguageSwitcher onLangChange={handleLangChange} />
           <div className="shell-footer">
