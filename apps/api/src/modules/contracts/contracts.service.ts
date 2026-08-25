@@ -1,6 +1,6 @@
 /**
  * Contract engine service (ADR-0007 + research reconciliation §2):
- * numbering authority (row-locked sequence), structured assembly, immutable versions,
+ * numbering authority (row-locked sequence), structured assembly, immutable versions, 
  * Blank Slate lifecycle (issue → print → reconcile/void), amendments with liability
  * continuity on vehicle replacement.
  */
@@ -69,6 +69,13 @@ const masked = (docs: AssemblyData['identityDocs'], type: string) =>
 
 const cents = (value: bigint | number | string | null | undefined) => value == null ? null : String(Number(value) / 100);
 
+/** Canonical rental-day calculation: every contract period must derive from pickup/return timestamps. */
+export function rentalDaysFromPeriod(pickupAt: Date, returnAt: Date): number {
+  const diffMs = returnAt.getTime() - pickupAt.getTime();
+  if (!Number.isFinite(diffMs) || diffMs <= 0) throw new BadRequestException('Période de location invalide');
+  return Math.max(1, Math.ceil(diffMs / 86_400_000));
+}
+
 export function assembleContent(data: AssemblyData): ContractContent {
   const capturedAt = new Date().toISOString();
   const c = blankContractContent({
@@ -117,19 +124,25 @@ export function assembleContent(data: AssemblyData): ContractContent {
       vin: v.vin,
     };
   }
+  let derivedDays: number | null = null;
   if (r) {
+    derivedDays = rentalDaysFromPeriod(r.pickupAt, r.returnAt);
+    if (q && q.days !== derivedDays) {
+      throw new BadRequestException(`Devis incohérent avec la période de location: devis=${q.days} jour(s), période=${derivedDays} jour(s)`);
+    }
     c.period = {
       pickupAt: r.pickupAt.toISOString(), returnAt: r.returnAt.toISOString(),
-      days: q ? String(q.days) : null,
+      days: String(derivedDays),
       pickupBranch: data.branchOut?.name ?? null, returnBranch: data.branchIn?.name ?? null,
     };
   }
   if (q) {
     const inputs = q.inputs as { dailyRate?: string };
+    const days = derivedDays ?? Number(q.days);
     c.pricing = {
       subtotal: cents(q.subtotal),
       dailyRate: inputs.dailyRate ? String(Number(inputs.dailyRate) / 100) : null,
-      days: String(q.days),
+      days: String(days),
       discount: cents(q.discount),
       total: cents(q.total),
       currency: data.agency.currency || 'MAD',
