@@ -15,13 +15,25 @@ const TEST_DB = process.env.PG_TEST_DATABASE ?? 'locaos_test';
 const BASE_URL = process.env.DATABASE_URL ?? 'postgresql://locaos:locaos@127.0.0.1:5432/locaos';
 const TEST_URL = BASE_URL.replace(/\/[^/]+$/, `/${TEST_DB}`);
 
-const pnpmCommand = process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm';
-
+const pnpmArgs = (args) => args;
 const run = (cmd, args, opts = {}) => {
-  const executable = cmd === 'pnpm' ? pnpmCommand : cmd;
-  const r = spawnSync(executable, args, { stdio: 'inherit', cwd: root, ...opts });
+  let executable = cmd;
+  let commandArgs = args;
+  if (cmd === 'pnpm') {
+    executable = process.env.npm_execpath;
+    if (!executable) {
+      throw new Error('Unable to locate the package-manager runner (npm_execpath is not set). Run this script through pnpm.');
+    }
+    commandArgs = [executable, ...pnpmArgs(args)];
+  }
+  const r = spawnSync(process.execPath, executable === process.execPath ? commandArgs : [executable, ...commandArgs], {
+    stdio: 'inherit',
+    cwd: root,
+    shell: false,
+    ...opts,
+  });
   if (r.error) {
-    console.error(`test-db: failed to launch ${executable}:`, r.error.message);
+    console.error(`test-db: failed to launch ${cmd}:`, r.error.message);
     process.exit(1);
   }
   if (r.status !== 0) process.exit(r.status ?? 1);
