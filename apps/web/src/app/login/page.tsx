@@ -3,13 +3,17 @@ import { UI_STRINGS } from '@locaos/domain/i18n';
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 
+type Lang = 'fr' | 'ar' | 'en';
+
 export default function LoginPage() {
   const router = useRouter();
   const [email, setEmail] = useState('owner@atlasrent.ma');
   const [password, setPassword] = useState('');
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const lang = (typeof window !== 'undefined' && document.cookie.match(/locaos-lang=([^;])/))?.[1] === 'ar' ? 'ar' : 'fr';
+  const cookieMatch = typeof document !== 'undefined' ? document.cookie.match(/(?:^|;\s*)locaos-lang=([^;]+)/) : null;
+  const lang: Lang = cookieMatch?.[1] === 'ar' ? 'ar' : cookieMatch?.[1] === 'en' ? 'en' : 'fr';
+  const dir = lang === 'ar' ? 'rtl' : 'ltr';
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -19,13 +23,13 @@ export default function LoginPage() {
       body: JSON.stringify({ email, password }),
     });
     if (res.ok) { router.push('/'); router.refresh(); return; }
-    const body = await res.json().catch(() => null);
+    await res.json().catch(() => null);
     setErr(UI_STRINGS.ERROR[lang] ?? UI_STRINGS.ERROR.fr);
     setBusy(false);
   };
 
   return (
-    <div className="login-wrap" style={{ dir: lang === 'ar' ? 'rtl' : 'ltr' }}>
+    <div className="login-wrap" style={{ direction: dir }}>
       <div>
         <form className="login-box" onSubmit={submit}>
           <div style={{ fontSize: 22, fontWeight: 800 }}>{UI_STRINGS.SHELL[lang] ?? UI_STRINGS.SHELL.fr}</div>
