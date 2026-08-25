@@ -1,30 +1,19 @@
 'use client';
+
 import { useEffect, useState } from 'react';
+import { readLocale, setLocale, type Locale } from '@/lib/client-preferences';
 
-type Lang = 'fr' | 'ar' | 'en';
-const LANG_COOKIE = 'locaos-lang';
-
-function setLangCookie(lang: Lang) {
-  document.cookie = `${LANG_COOKIE}=${lang};path=/;max-age=31536000;SameSite=Lax`;
-}
-
-function readLangCookie(): Lang {
-  const match = document.cookie.match(/(?:^|;\s*)locaos-lang=([^;]+)/);
-  if (match?.[1] === 'ar' || match?.[1] === 'en') return match[1];
-  return 'fr';
-}
-
-export function LanguageSwitcher({ onLangChange }: { onLangChange: (lang: Lang) => void }) {
-  const [lang, setLang] = useState<Lang>('fr');
+export function LanguageSwitcher({ onLangChange }: { onLangChange: (lang: Locale) => void }) {
+  const [lang, setLang] = useState<Locale>('fr');
 
   useEffect(() => {
-    setLang(readLangCookie());
+    setLang(readLocale());
   }, []);
 
-  const handleChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const next = e.target.value as Lang;
+  const handleChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
+    const next = event.target.value as Locale;
     setLang(next);
-    setLangCookie(next);
+    setLocale(next);
     onLangChange(next);
   };
 
