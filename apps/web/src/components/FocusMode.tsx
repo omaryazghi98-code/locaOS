@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { apiFetch } from '@/lib/api';
+import { clientApiFetch } from '@/lib/client-api';
 import { FOCUS_STRINGS } from '@locaos/domain/i18n';
 
 export interface Pickup {
@@ -56,7 +56,7 @@ export default function FocusMode() {
   useEffect(() => {
     setLang(readLanguage());
     let cancelled = false;
-    apiFetch<FocusData>('/api/ops/focus')
+    clientApiFetch<FocusData>('/api/ops/focus')
       .then((payload) => { if (!cancelled) setData(payload); })
       .catch(() => { if (!cancelled) setError(true); })
       .finally(() => { if (!cancelled) setLoading(false); });
