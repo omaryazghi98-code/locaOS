@@ -1,4 +1,5 @@
 'use client';
+
 import Link from 'next/link';
 
 type Action = {
@@ -16,27 +17,17 @@ export interface PageHeaderProps {
 
 export function PageHeader({ title, subtitle, action, showDivider = true }: PageHeaderProps) {
   return (
-    <div className="topbar">
-      <div>
-        <h1>{title}</h1>
+    <header className="topbar" aria-labelledby={`page-title-${title}`}>
+      <div className="page-header-copy">
+        <h1 id={`page-title-${title}`}>{title}</h1>
         {subtitle && <div className="sub">{subtitle}</div>}
       </div>
-
       {action && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          {action.variant === 'primary' ? (
-            <Link href={action.path} className="btn primary">
-              {action.label}
-            </Link>
-          ) : (
-            <Link href={action.path} className="btn mini">
-              {action.label}
-            </Link>
-          )}
-        </div>
+        <Link href={action.path} className={`btn ${action.variant === 'primary' ? 'primary' : 'mini'}`}>
+          {action.label}
+        </Link>
       )}
-
-      {showDivider && <div style={{ borderTop: '1px solid var(--line)', margin: '8px 0', width: '100%' }} />}
-    </div>
+      {showDivider && <div className="page-header-divider" aria-hidden="true" />}
+    </header>
   );
 }
