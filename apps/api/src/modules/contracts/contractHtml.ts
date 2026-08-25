@@ -11,12 +11,13 @@ const dt = (v: string | null | undefined) => {
 };
 const yn = (v: boolean | null) => (v == null ? '☐ Oui ☐ Non' : v ? 'Oui' : 'Non');
 
-/** Structured content → print-ready HTML. RTL for Arabic; fonts embedded by the PDF service. */
+/** Structured content → print-ready HTML. The renderer only consumes the immutable contract snapshot. */
 export function buildContractHtml(content: ContractContent): string {
   const lang = content.header.language as Lang;
   const t = T[lang] ?? T.fr;
   const rtl = lang === 'ar' ? ' dir="rtl" lang="ar"' : '';
   const h = content.header;
+  const s = content.snapshot;
   const c = content.customer, v = content.vehicle, p = content.period, pr = content.pricing;
   const d = content.deposit, ins = content.insurance, cb = content.crossBorder, mf = content.mileageFuel;
 
@@ -28,7 +29,7 @@ export function buildContractHtml(content: ContractContent): string {
   :root { color-scheme: light; }
   body { font-family: 'ContractLatin','ContractArabic',sans-serif; font-size: 12px; margin: 26px 30px; color: #111; line-height: 1.45; }
   h1 { font-size: 15px; text-align:center; margin: 0 0 2px; letter-spacing: .4px; }
-  .meta { display:flex; justify-content:space-between; font-size: 11px; margin-bottom: 10px; border-bottom: 2px solid #111; padding-bottom: 6px; }
+  .meta { display:flex; justify-content:space-between; font-size: 11px; margin-bottom: 10px; border-bottom: 2px solid #111; padding-bottom: 6px; gap: 14px; }
   section { margin-top: 10px; }
   h2 { font-size: 12px; border-bottom: 1px solid #999; padding-bottom: 2px; margin: 0 0 4px; text-transform: uppercase; }
   table { width: 100%; border-collapse: collapse; }
@@ -60,16 +61,16 @@ ${row(t.pickupAt, dt(p.pickupAt))}${row(t.returnAt, dt(p.returnAt))}${row(t.days
 ${row(t.pickupBranch, val(p.pickupBranch))}${row(t.returnBranch, val(p.returnBranch))}
 </table></section>
 <section><h2>${t.pricingSection}</h2><table>
-${row(t.dailyRate, money(pr.dailyRate) + ' MAD')}${row(t.discount, money(pr.discount) + ' MAD')}
-${row(t.total, `<b>${money(pr.total)} MAD</b>`)}
+${row('Sous-total', money(pr.subtotal) + ' ' + pr.currency)}${row(t.dailyRate, money(pr.dailyRate) + ' ' + pr.currency)}${row(t.discount, money(pr.discount) + ' ' + pr.currency)}
+${row(t.total, `<b>${money(pr.total)} ${pr.currency}</b>`)}
 </table></section>
 <section><h2>${t.depositSection}</h2><table>
-${row(t.depositAmount, money(d.amount) + ' MAD')}${row(t.depositMethod, val(d.method))}${row(t.heldAt, dt(d.heldAt))}
+${row(t.depositAmount, money(d.amount) + ' MAD')}${row(t.depositMethod, val(d.method))}${row('Statut', val(d.status))}${row(t.heldAt, dt(d.heldAt))}
 </table></section>
 <section><h2>${t.insuranceSection}</h2><table>
 ${row(t.franchise, money(ins.franchiseAmount != null ? String(Number(ins.franchiseAmount) / 100) : null) + ' MAD')}
 ${row(t.cdw, yn(ins.cdw))}${row(t.superCdw, yn(ins.superCdw))}
-${row(t.exclusions, (ins.exclusions ?? t.exclusionsList).join(' · '))}
+${row(t.exclusions, ins.exclusions?.join(' · ') ?? '………………………………')}
 </table></section>
 <section><h2>${t.crossBorderSection}</h2><table>
 ${row(t.authorized, yn(cb.authorized))}${row(t.zones, val((cb.zones ?? []).join(', ')))}${row(t.atRef, val(cb.admissionTemporaireRef))}
@@ -87,6 +88,7 @@ ${row(t.consentMarketing, yn(content.consents?.find((x) => x.purpose === 'MARKET
 ${row(t.consentData, yn(content.consents?.find((x) => x.purpose === 'DATA_PROCESSING')?.granted ?? null))}
 </table></section>
 <section><h2>${t.clauses.length ? '—' : ''}</h2><ol class="clauses">${t.clauses.map((cl) => `<li>${cl}</li>`).join('')}</ol></section>
+<div class="note">Capture ${dt(s.capturedAt)} · Réservation ${val(s.reservationId)} · Devis ${val(s.quoteId)} v${val(s.quoteVersion)}</div>
 <div class="signatures">
   <div class="sig"><div class="label">${t.customerSig}</div><div>${val(content.signatures.customer.name)} — ${dt(content.signatures.customer.at)}</div></div>
   <div class="sig"><div class="label">${t.agentSig}</div><div>${val(content.signatures.agent.name)} — ${dt(content.signatures.agent.at)}</div></div>
