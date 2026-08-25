@@ -2,6 +2,7 @@
 setlocal EnableExtensions
 cd /d "%~dp0"
 title locaOS Dev Menu
+
 :menu
 cls
 echo ================================================
@@ -10,19 +11,19 @@ echo ================================================
 echo.
 echo  1. Start all (DB + API + Web)
 echo  2. Stop API + Web
- echo 3. Restart API
- echo 4. Restart Web
- echo 5. Start PostgreSQL
- echo 6. Stop PostgreSQL
- echo 7. Run migrations
- echo 8. Reseed demo data (WIPE + SEED)
- echo 9. Reset demo DB (WIPE + MIGRATE + SEED)
- echo 10. Repair demo contract snapshots
- echo 11. Open locaOS
- echo 12. Run typecheck
- echo 13. Run build
- echo 0. Exit
- echo.
+echo  3. Restart API
+echo  4. Restart Web
+echo  5. Start PostgreSQL
+echo  6. Stop PostgreSQL
+echo  7. Run migrations
+echo  8. Reseed demo data (WIPE + SEED)
+echo  9. Reset demo DB (WIPE + MIGRATE + SEED)
+echo 10. Repair demo contract snapshots
+echo 11. Open locaOS
+echo 12. Run typecheck
+echo 13. Run build
+echo  0. Exit
+echo.
 set /p choice=Select: 
 if "%choice%"=="1" goto startall
 if "%choice%"=="2" goto stopwebapi
@@ -67,7 +68,7 @@ goto menu
 call pnpm db:start
 goto menu
 
-dbstop
+:dbstop
 call pnpm db:stop
 goto menu
 
@@ -91,7 +92,7 @@ goto menu
 start "" "http://localhost:3000"
 goto menu
 
-typecheck
+:typecheck
 call pnpm typecheck
 goto menu
 
