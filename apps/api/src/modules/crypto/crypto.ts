@@ -31,6 +31,8 @@ export function hashToken(token: string): string {
   return createHash('sha256').update(token).digest('hex');
 }
 
+/** Stable JSON hash for structured snapshots, including bigint money fields. */
 export function contentHash(obj: unknown): string {
-  return createHash('sha256').update(JSON.stringify(obj)).digest('hex');
+  const json = JSON.stringify(obj, (_, value) => typeof value === 'bigint' ? value.toString() : value);
+  return createHash('sha256').update(json).digest('hex');
 }
