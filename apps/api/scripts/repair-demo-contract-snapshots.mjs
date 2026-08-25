@@ -1,4 +1,5 @@
 import pg from 'pg';
+import { createHash } from 'node:crypto';
 
 const { Client } = pg;
 const DATABASE_URL = process.env.DATABASE_URL ?? 'postgresql://locaos:locaos@127.0.0.1:5432/locaos';
@@ -11,6 +12,7 @@ function rentalDays(pickupAt, returnAt) {
 }
 
 const money = (value) => value == null ? null : String(Number(value) / 100);
+const contentHash = (content) => createHash('sha256').update(JSON.stringify(content)).digest('hex');
 
 const client = new Client({ connectionString: DATABASE_URL });
 await client.connect();
@@ -74,13 +76,13 @@ try {
     };
 
     await client.query(
-      'update contract_versions set content = $1::jsonb where id = $2',
-      [JSON.stringify(content), row.current_version_id],
+      'update contract_versions set content = $1::jsonb, content_hash = $2 where id = $3',
+      [JSON.stringify(content), contentHash(content), row.current_version_id],
     );
     repaired += 1;
   }
 
-  console.log(`demo-contract-repair: ${repaired} contract snapshot(s) synchronized from reservation/quote data.`);
+  console.log(`demo-contract-repair: ${repaired} contract snapshot(s) synchronized from rental logic.`);
 } finally {
   await client.end();
 }
