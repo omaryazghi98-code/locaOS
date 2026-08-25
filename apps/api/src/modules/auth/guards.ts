@@ -30,7 +30,8 @@ export class AuthGuard implements CanActivate {
 
 @Injectable()
 export class PermissionsGuard implements CanActivate {
-  constructor(private reflector: Reflector) {}
+  private readonly reflector = new Reflector();
+
   canActivate(context: ExecutionContext): boolean {
     const required = this.reflector.getAllAndOverride<string[]>(PERMISSIONS_KEY, [
       context.getHandler(), context.getClass(),
