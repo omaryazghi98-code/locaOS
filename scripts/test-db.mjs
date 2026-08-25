@@ -5,7 +5,7 @@
  * Also usable locally: `node scripts/test-db.mjs`
  */
 import { spawnSync } from 'node:child_process';
-import { join, dirname } from 'node:path';
+import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import pg from 'pg';
 
@@ -13,10 +13,17 @@ const here = dirname(fileURLToPath(import.meta.url));
 const root = join(here, '..');
 const TEST_DB = process.env.PG_TEST_DATABASE ?? 'locaos_test';
 const BASE_URL = process.env.DATABASE_URL ?? 'postgresql://locaos:locaos@127.0.0.1:5432/locaos';
-const TEST_URL = BASE_URL.replace(/\/[^/]+$/, `/${TEST_DB}`);
+const TEST_URL = BASE_URL.replace(/\/[\^/]+$/, `/${TEST_DB}`);
+
+const pnpmCommand = process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm';
 
 const run = (cmd, args, opts = {}) => {
-  const r = spawnSync(cmd, args, { stdio: 'inherit', cwd: root, ...opts });
+  const executable = cmd === 'pnpm' ? pnpmCommand : cmd;
+  const r = spawnSync(executable, args, { stdio: 'inherit', cwd: root, ...opts });
+  if (r.error) {
+    console.error(`test-db: failed to launch ${executable}:`, r.error.message);
+    process.exit(1);
+  }
   if (r.status !== 0) process.exit(r.status ?? 1);
 };
 
@@ -24,7 +31,7 @@ const run = (cmd, args, opts = {}) => {
 run('node', ['scripts/db.mjs', 'start']);
 
 // 2) recreate test db
-const admin = new pg.Client({ connectionString: BASE_URL.replace(/\/[^/]+$/, '/postgres') });
+const admin = new pg.Client({ connectionString: BASE_URL.replace(/\/[\^/]+$/, '/postgres') });
 await admin.connect();
 await admin.query(`DROP DATABASE IF EXISTS ${TEST_DB} WITH (FORCE)`);
 await admin.query(`CREATE DATABASE ${TEST_DB}`);
