@@ -1,6 +1,7 @@
 'use client';
 
-import type { CSSProperties, ComponentType, ReactNode } from 'react';
+import type { ComponentType, CSSProperties, ReactNode } from 'react';
+import { UI_STRINGS } from '@locaos/domain/i18n';
 
 export type Column<T = unknown> = {
   key: string;
@@ -19,6 +20,7 @@ type DataTableProps<T extends { id?: string } = { id?: string }> = {
   onRowSelect?: (id: string, selected: boolean) => void;
   selectAllLabel?: string;
   rowLabel?: string;
+  ariaLabel?: string;
 };
 
 function getDensityStyle(dense: 'compact' | 'comfortable' | 'detailed'): CSSProperties {
@@ -34,8 +36,9 @@ export function DataTable<T extends { id?: string }>({
   dense = 'comfortable',
   selectableRowIds,
   onRowSelect,
-  selectAllLabel = 'Sélectionner tout',
-  rowLabel = 'Sélectionner cette ligne',
+  selectAllLabel = UI_STRINGS.COMMON.selectAll.fr,
+  rowLabel = UI_STRINGS.COMMON.selectRow.fr,
+  ariaLabel = 'Data table',
 }: DataTableProps<T>) {
   const densityStyles = getDensityStyle(dense);
   const isSelectable = !!selectableRowIds && !!onRowSelect;
@@ -49,7 +52,7 @@ export function DataTable<T extends { id?: string }>({
 
   return (
     <div className="table-wrap">
-      <table className="tbl">
+      <table className="tbl" aria-label={ariaLabel}>
         <thead>
           <tr>
             {isSelectable && (
@@ -58,12 +61,7 @@ export function DataTable<T extends { id?: string }>({
               </th>
             )}
             {visibleColumns.map((col) => (
-              <th
-                scope="col"
-                key={col.key}
-                className={col.className}
-                style={{ ...densityStyles, height: dense === 'compact' ? '32px' : dense === 'detailed' ? '48px' : '40px' }}
-              >
+              <th scope="col" key={col.key} className={col.className} style={{ ...densityStyles, height: dense === 'compact' ? '32px' : dense === 'detailed' ? '48px' : '40px' }}>
                 {col.header}
               </th>
             ))}
@@ -77,21 +75,12 @@ export function DataTable<T extends { id?: string }>({
               <tr key={rowId} aria-selected={isSelectable ? selected : undefined}>
                 {isSelectable && (
                   <td data-label={selectAllLabel} style={{ width: '48px', padding: densityStyles.padding }}>
-                    <input
-                      type="checkbox"
-                      checked={selected}
-                      onChange={(e) => onRowSelect?.(rowId, e.target.checked)}
-                      aria-label={`${rowLabel}: ${rowId}`}
-                    />
+                    <input type="checkbox" checked={selected} onChange={(e) => onRowSelect?.(rowId, e.target.checked)} aria-label={`${rowLabel}: ${rowId}`} />
                   </td>
                 )}
                 {visibleColumns.map((col) => {
                   const val = row[col.key as keyof T];
-                  return (
-                    <td key={col.key} data-label={col.header} className={col.className} style={densityStyles}>
-                      {col.Component ? <col.Component value={val as T} row={row} /> : col.format ? col.format(val as T, row) : String(val ?? '')}
-                    </td>
-                  );
+                  return <td key={col.key} data-label={col.header} className={col.className} style={densityStyles}>{col.Component ? <col.Component value={val as T} row={row} /> : col.format ? col.format(val as T, row) : String(val ?? '')}</td>;
                 })}
               </tr>
             );
