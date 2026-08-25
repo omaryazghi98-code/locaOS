@@ -6,7 +6,10 @@
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
-    ".": { "types": "./dist/index.d.ts", "default": "./dist/index.js" }
+    ".": { "types": "./dist/index.d.ts", "default": "./dist/index.js" },
+    "./i18n": { "types": "./dist/i18n.d.ts", "default": "./dist/i18n.js" },
+    "./permissions": { "types": "./dist/permissions.d.ts", "default": "./dist/permissions.js" },
+    "./labels": { "types": "./dist/labels.d.ts", "default": "./dist/labels.js" }
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
