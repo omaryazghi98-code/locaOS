@@ -15,25 +15,18 @@ const TEST_DB = process.env.PG_TEST_DATABASE ?? 'locaos_test';
 const BASE_URL = process.env.DATABASE_URL ?? 'postgresql://locaos:locaos@127.0.0.1:5432/locaos';
 const TEST_URL = BASE_URL.replace(/\/[^/]+$/, `/${TEST_DB}`);
 
-const pnpmArgs = (args) => args;
 const run = (cmd, args, opts = {}) => {
-  let executable = cmd;
-  let commandArgs = args;
-  if (cmd === 'pnpm') {
-    executable = process.env.npm_execpath;
-    if (!executable) {
-      throw new Error('Unable to locate the package-manager runner (npm_execpath is not set). Run this script through pnpm.');
-    }
-    commandArgs = [executable, ...pnpmArgs(args)];
-  }
-  const r = spawnSync(process.execPath, executable === process.execPath ? commandArgs : [executable, ...commandArgs], {
-    stdio: 'inherit',
-    cwd: root,
-    shell: false,
-    ...opts,
-  });
+  const executable = cmd === 'pnpm'
+    ? (process.platform === 'win32' ? process.env.ComSpec ?? 'cmd.exe' : 'pnpm')
+    : cmd;
+  const commandArgs = cmd === 'pnpm' && process.platform === 'win32'
+    ? ['/d', '/s', '/c', `pnpm ${args.map((a) => (/\s/.test(a) ? `"${a}"` : a)).join(' ')}`]
+    : args;
+  const actualExecutable = cmd === 'node' ? process.execPath : executable;
+  const actualArgs = cmd === 'node' ? args : commandArgs;
+  const r = spawnSync(actualExecutable, actualArgs, { stdio: 'inherit', cwd: root, ...opts });
   if (r.error) {
-    console.error(`test-db: failed to launch ${cmd}:`, r.error.message);
+    console.error(`test-db: failed to launch ${actualExecutable}:`, r.error.message);
     process.exit(1);
   }
   if (r.status !== 0) process.exit(r.status ?? 1);
