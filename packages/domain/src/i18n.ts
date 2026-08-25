@@ -10,6 +10,13 @@ export const UI_STRINGS = {
     en: ['Brief of the day', 'Today', 'Briefs', 'Reservations', 'Calendar', 'Fleet', 'Customers', 'Contracts', 'Map', 'Field (PWA)', 'Cash & finance', 'Reports', 'Alerts'],
   } satisfies LocalizedNav,
   COMMAND_CENTER: { fr: 'Centre de commandement', ar: 'مركز القيادة', en: 'Command Center' } satisfies LocalizedString,
+  COMMAND_KPIS: {
+    activeRentals: { fr: 'Locations en cours', ar: 'التأجيرات الجارية', en: 'Active rentals' },
+    available: { fr: 'Véhicules disponibles', ar: 'السيارات المتاحة', en: 'Available vehicles' },
+    departuresReturns: { fr: 'Départs / retours', ar: 'المغادرات / العودات', en: 'Pickups / returns' },
+    revenue30: { fr: "Chiffre d'affaires · 30 j", ar: 'إيرادات آخر 30 يومًا', en: '30-day revenue' },
+    outstanding: { fr: 'Solde à recouvrer', ar: 'الرصيد المستحق', en: 'Outstanding balance' },
+  },
   LOGIN: { fr: 'Connexion', ar: 'تسجيل الدخول', en: 'Login' } satisfies LocalizedString,
   SHELL: { fr: 'locaOS', ar: 'locaOS', en: 'locaOS' } satisfies LocalizedString,
   ACTION: { fr: 'Action', ar: 'إجراء', en: 'Action' } satisfies LocalizedString,
