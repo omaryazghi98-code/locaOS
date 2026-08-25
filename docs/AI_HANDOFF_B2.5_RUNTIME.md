@@ -61,32 +61,52 @@ Workflow rule:
 - Printing must not create or modify financial ledger records.
 
 ### PDF renderer — Windows local development
-Observed: `/api/contracts/:id/pdf` returned `{"error":{"code":"INTERNAL","message":"Erreur interne"}}` on Windows.
+Observed: `/api/contracts/:id/pdf` returned an internal error on Windows.
 
-Root cause: the API always tried to launch `@sparticuz/chromium`. The package documentation states that its bundled Chromium is Linux-only and does not work on Windows/macOS; local development should use a locally installed browser. citeturn327205search0turn327205search2
+Root cause: the API always tried to launch `@sparticuz/chromium`, whose bundled browser is intended for Linux/serverless use.
 
 Correction committed:
 - `2c2ae575` — `fix(pdf): use local Chrome on Windows and macOS`
-- PDF browser selection now honors `CHROMIUM_EXECUTABLE`, otherwise auto-detects installed Chrome/Edge on Windows and Chrome/Edge on macOS.
-- The bundled Sparticuz browser remains the Linux/server fallback.
-- Local browser launches use local-browser args rather than the Linux serverless Chromium args.
+- PDF browser selection now honors `CHROMIUM_EXECUTABLE`, otherwise auto-detects a locally installed Chrome/Edge on Windows/macOS, with the bundled Chromium remaining the Linux/server fallback.
 
-**Not yet manually verified after this fix.** The next required test is a real FR contract PDF and then an AR contract PDF.
+**Still needs manual FR + AR PDF verification after syncing.**
+
+### Contract snapshot / serialization refactor
+Problem identified: contract generation had the right immutable-version architecture but the serialized agreement was incomplete and contained hardcoded rental terms (for example insurance/cross-border/consent defaults). That risks divergence between the operational data and the printed contract.
+
+New rule:
+- `contract_versions.content` is the canonical serialized agreement snapshot.
+- The Contract UI and PDF must consume that same snapshot.
+- Known reservation/quote/vehicle/customer/deposit data is copied into the snapshot at capture time.
+- Unknown terms stay empty/null instead of being invented.
+- Later changes require an explicit amendment/new contract version rather than silently mutating the signed snapshot.
+
+Implemented:
+- `28d576d` — domain contract schema now includes explicit snapshot metadata, quote version, pricing subtotal, planned/held deposit status, and keeps unconfigured insurance/cross-border/consent terms nullable.
+- `a77f3b3` — contract assembly now serializes quote subtotal/discount/total, quote version, deposit planned/held state, rental capture time, and real vehicle mileage/fuel when available; removed hardcoded insurance/cross-border/consent defaults.
+- `b5b2008` — PDF renderer now prints the serialized subtotal/discount/total, deposit status, and snapshot traceability from that same content object.
+- `5c335ad` — Contract detail page now displays the serialized agreement snapshot (contract total, pricing, deposit, booking/quote version, customer, vehicle, period, mileage/fuel) instead of making the live reservation data the only visible source.
+- `7ac06a6` — domain tests cover the serialized snapshot structure and blank-contract null behavior.
+
+Important current limitation:
+- The reservation assembly helper still does not yet populate departure/return inspection rows because that helper remains in `contracts.controller.ts`; the schema and assembly layer are prepared for those fields and leave them null until sourced.
+- The amendment controller still needs a focused audit for complete snapshot recomputation on every amendment kind, especially PRICE, so new versions preserve all existing terms while changing only the amended field(s).
 
 ### Morocco contract example / template
-The existing backend template is already Morocco-oriented and is explicitly documented as common Moroccan agency practice, not legal advice. It contains fields for agency identity/ICE, CIN/passport, driving licence, vehicle/VIN, rental period, pricing, deposit, insurance/deductible, mileage/fuel, cross-border authorization, additional drivers, CNDP-related consent fields, and signatures.
-
-External research used for this audit indicates that Moroccan rental-contract practice commonly covers agency identity, customer identity, licence information, vehicle state/details, duration and price, deposit, fuel/mileage, insurance/deductible, and signatures. Official Office des Changes material confirms that in the specific non-resident/foreign-vehicle contexts it regulates, a rental contract must specify duration, price, and payment terms. The repository template must remain a product template and should not be presented as legal advice.
+The existing backend template is Morocco-oriented and is explicitly documented as common Moroccan agency practice, not legal advice. It contains fields for agency identity/ICE, CIN/passport, driving licence, vehicle/VIN, rental period, pricing, deposit, insurance/deductible, mileage/fuel, cross-border authorization, additional drivers, CNDP-related consent fields, and signatures.
 
 ## Still open — must be audited before declaring B2.5 complete
 
 1. Pull and manually verify the Windows PDF renderer correction with a real FR contract, then an AR contract.
-2. Systematically test every visible button/action on the console and identify true no-op actions vs role-gated/invalid-state actions.
-3. Verify Arabic persistence with: switch to AR → navigate to another page → hard refresh → verify `<html dir="rtl">` and sidebar on the right.
-4. Audit all pages for mixed-language strings after switching FR/EN/AR; do not assume the Shell translation implies page translation.
-5. Test tablet at 1024×768 and 768×1024.
-6. Test mobile at 390×844, including nav drawer, tables/cards, dialogs, Focus Mode, and Arabic RTL.
-7. Run final `pnpm typecheck`, `pnpm build`, `pnpm test:ci`, and lint after all runtime/UI fixes.
+2. Verify the new serialized contract UI/PDF values against the reservation/quote used to generate the contract.
+3. Populate departure/return inspection snapshot references and recorded mileage/fuel from the controller assembly helper.
+4. Audit contract amendment logic so every amendment creates a complete new snapshot rather than a partial mutation.
+5. Systematically test every visible button/action on the console and identify true no-op actions vs role-gated/invalid-state actions.
+6. Verify Arabic persistence with: switch to AR → navigate to another page → hard refresh → verify `<html dir="rtl">` and sidebar on the right.
+7. Audit all pages for mixed-language strings after switching FR/EN/AR; do not assume the Shell translation implies page translation.
+8. Test tablet at 1024×768 and 768×1024.
+9. Test mobile at 390×844, including nav drawer, tables/cards, dialogs, Focus Mode, and Arabic RTL.
+10. Run final `pnpm typecheck`, `pnpm build`, `pnpm test:ci`, and lint after all runtime/UI fixes.
 
 ## Important rule
 Do not start B2.4 operational-list expansion until these B2.5 runtime/RTL/print/manual defects are closed and verified.
