@@ -21,13 +21,13 @@ export const InsuranceBlock = z.object({
   franchiseAmount: z.preprocess((v) => (typeof v === 'string' ? BigInt(v) : v), z.bigint().nullable()),
   cdw: z.boolean().nullable(),
   superCdw: z.boolean().nullable(),
-  exclusions: z.array(z.string()).nullable(), // e.g. pneus, glace, sous-bassement
+  exclusions: z.array(z.string()).nullable(),
 });
 export type InsuranceBlock = z.infer<typeof InsuranceBlock>;
 
 export const CrossBorderBlock = z.object({
   authorized: z.boolean().nullable(),
-  zones: z.array(z.string()).nullable(), // Ceuta / Melilla / Tanger Med
+  zones: z.array(z.string()).nullable(),
   admissionTemporaireRef: empty,
 });
 
@@ -39,7 +39,15 @@ export const ContractContent = z.object({
     contractNumber: z.string(),
     issuedAt: z.string().nullable(),
     language: z.enum(CONTRACT_LANGUAGES),
-    mode: z.enum(['FULL', 'BLANK']), // BLANK = designated fields left empty for handwriting
+    mode: z.enum(['FULL', 'BLANK']),
+  }),
+  snapshot: z.object({
+    capturedAt: z.string(),
+    reservationId: empty,
+    quoteId: empty,
+    quoteVersion: z.string().nullable(),
+    departureInspectionId: empty,
+    returnInspectionId: empty,
   }),
   customer: z.object({
     name: empty, cinOrPassport: empty, licenseNumber: empty, licenseIssuedOn: empty,
@@ -52,9 +60,9 @@ export const ContractContent = z.object({
   }),
   period: z.object({ pickupAt: empty, returnAt: empty, days: empty, pickupBranch: empty, returnBranch: empty }),
   pricing: z.object({
-    dailyRate: empty, days: empty, discount: empty, total: empty, currency: z.string().default('MAD'),
+    subtotal: empty, dailyRate: empty, days: empty, discount: empty, total: empty, currency: z.string().default('MAD'),
   }),
-  deposit: z.object({ amount: empty, method: empty, heldAt: empty }),
+  deposit: z.object({ amount: empty, method: empty, status: empty, heldAt: empty }),
   insurance: InsuranceBlock,
   crossBorder: CrossBorderBlock,
   mileageFuel: z.object({
@@ -77,10 +85,7 @@ export function formatContractNumber(prefix: string, year: number, seq: number):
   return `${prefix}-${year}-${String(seq).padStart(5, '0')}`;
 }
 
-/**
- * Blank Slate: same schema, every designated handwriting field empty.
- * The stub occupies a real number — never an invisible legal record.
- */
+/** Blank Slate: same schema, every designated handwriting field empty. */
 export function blankContractContent(args: {
   agencyName: string; agencyIce: string | null; branchName: string | null;
   contractNumber: string; language: ContractLanguage;
@@ -88,12 +93,16 @@ export function blankContractContent(args: {
   const b = (v: string | null = null) => v;
   return ContractContent.parse({
     header: { ...args, issuedAt: new Date().toISOString(), mode: 'BLANK' },
+    snapshot: {
+      capturedAt: new Date().toISOString(), reservationId: b(), quoteId: b(), quoteVersion: null,
+      departureInspectionId: b(), returnInspectionId: b(),
+    },
     customer: { name: b(), cinOrPassport: b(), licenseNumber: b(), licenseIssuedOn: b(), phone: b(), email: b(), address: b(), birthDate: b() },
     drivers: [],
     vehicle: { plate: b(), makeModel: b(), category: b(), mileageOut: b(), fuelOut: b(), vin: b() },
     period: { pickupAt: b(), returnAt: b(), days: b(), pickupBranch: b(), returnBranch: b() },
-    pricing: { dailyRate: b(), days: b(), discount: b(), total: b(), currency: 'MAD' },
-    deposit: { amount: b(), method: b(), heldAt: b() },
+    pricing: { subtotal: b(), dailyRate: b(), days: b(), discount: b(), total: b(), currency: 'MAD' },
+    deposit: { amount: b(), method: b(), status: b(), heldAt: b() },
     insurance: { franchiseAmount: null, cdw: null, superCdw: null, exclusions: null },
     crossBorder: { authorized: null, zones: null, admissionTemporaireRef: b() },
     mileageFuel: { mileageOut: b(), mileageIn: b(), fuelOut: b(), fuelIn: b(), extraKmRate: b(), includedKmPerDay: b() },
@@ -103,4 +112,4 @@ export function blankContractContent(args: {
   });
 }
 
-export const BLANK_RECONCILE_DEADLINE_HOURS = 72; // alert threshold
+export const BLANK_RECONCILE_DEADLINE_HOURS = 72;
