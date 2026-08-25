@@ -1,17 +1,18 @@
 import type { Metadata, Viewport } from 'next';
+import { cookies } from 'next/headers';
 import './globals.css';
-import { UI_STRINGS } from '@locaos/domain/i18n';
 
 export const metadata: Metadata = {
   title: 'locaOS — Console agence',
-  description: 'Le système d\'exploitation des agences de location de voitures marocaines',
+  description: "Le système d'exploitation des agences de location de voitures marocaines",
   manifest: '/manifest.webmanifest',
 };
 export const viewport: Viewport = { themeColor: '#0f1216' };
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
-  // Determine language from cookie (set by client language switcher)
-  const lang = (typeof document !== 'undefined' && document.cookie.replace(/(?:(?:^|.*)\slocaos-lang=([^;])).*$|^.*$/, '$1')) === 'ar' ? 'ar' : 'fr';
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
+  const cookieStore = await cookies();
+  const rawLang = cookieStore.get('locaos-lang')?.value;
+  const lang = rawLang === 'ar' ? 'ar' : rawLang === 'en' ? 'en' : 'fr';
   const dir = lang === 'ar' ? 'rtl' : 'ltr';
 
   return (
