@@ -39,7 +39,6 @@ export class ContractsController {
     });
   }
 
-  /** Issue a Blank Slate contract: reserves a REAL number; always traceable (§8). */
   @Post('blank')
   @RequirePermission('contracts:blank')
   async issueBlank(@Body(new ZodValidationPipe(z.object({ language: z.enum(['fr', 'ar', 'en']) }))) body: { language: 'fr' | 'ar' | 'en' }, @Req() req: AuthedRequest) {
@@ -117,7 +116,6 @@ export class ContractsController {
     return result;
   }
 
-  /** Generate a populated draft contract from a reservation. */
   @Post('from-reservation')
   @RequirePermission('contracts:write')
   async fromReservation(@Body(new ZodValidationPipe(z.object({ reservationId: z.string().uuid(), language: z.enum(['fr', 'ar', 'en']).default('fr') }))) body: { reservationId: string; language: 'fr' | 'ar' | 'en' }, @Req() req: AuthedRequest) {
@@ -157,7 +155,7 @@ export class ContractsController {
       const amendments = await tx.select().from(contractAmendments).where(eq(contractAmendments.contractId, id));
       const deps = contract.depositId ? await tx.select().from(deposits).where(eq(deposits.id, contract.depositId)).limit(1) : [];
       const insps = await tx.select().from(inspections).where(eq(inspections.contractId, id));
-      const res = contract.reservationId ? await tx.select().from(reservations).where(eq(reservations.id, contract.reservationId)).limit(1) : [];
+      const res = contract.reservationId ? await tx.select().from(reservations).where(eq(reservations.id, contract.reservationId).limit(1)) : [];
       return {
         contract, versions: versions.map((v) => ({ ...v, content: undefined })), amendments,
         deposit: deps[0] ?? null, inspections: insps, reservation: res[0] ?? null,
@@ -193,7 +191,6 @@ export class ContractsController {
     return result;
   }
 
-  /** Handover: contract ACTIVE + vehicle RENTED (guarded by the state machine). */
   @Post(':id/activate')
   @RequirePermission('contracts:write')
   async activate(@Param('id', ParseUUIDPipe) id: string, @Req() req: AuthedRequest) {
@@ -201,16 +198,34 @@ export class ContractsController {
       const contract = await loadContract(tx, req.ctx!.agencyId, id);
       if (contract.status !== 'SIGNED') throw new ForbiddenException('Le contrat doit être signé avant remise');
       if (!contract.vehicleId) throw new ForbiddenException('Aucun véhicule affecté');
+      if (!contract.reservationId) throw new ForbiddenException('Une réservation est requise pour la remise');
+
+      const reservation = (await tx.select().from(reservations)
+        .where(and(eq(reservations.id, contract.reservationId), eq(reservations.agencyId, req.ctx!.agencyId))).limit(1))[0];
+      if (!reservation) throw new NotFoundException('Réservation introuvable');
+      if (reservation.status !== 'READY') throw new ForbiddenException('La réservation doit être READY avant remise');
+
+      const departure = await tx.select().from(inspections)
+        .where(and(eq(inspections.reservationId, reservation.id), eq(inspections.kind, 'DEPARTURE'))).limit(1);
+      if (!departure[0]) throw new ForbiddenException('Inspection départ obligatoire avant remise');
+
+      const quote = reservation.quoteId
+        ? (await tx.select().from(quotes).where(eq(quotes.id, reservation.quoteId)).limit(1))[0]
+        : null;
+      const requiredDeposit = quote?.depositRequired ?? 0n;
+      if (requiredDeposit > 0n) {
+        const secured = await tx.select().from(deposits)
+          .where(and(eq(deposits.contractId, contract.id), inArray(deposits.status, ['HELD', 'PRE_AUTHORIZED', 'PARTIALLY_CHARGED']))).limit(1);
+        if (!secured[0]) throw new ForbiddenException('Caution requise avant remise');
+      }
+
       const updated = await tx.update(contracts).set({ status: 'ACTIVE', updatedAt: new Date() }).where(eq(contracts.id, id)).returning();
       await transitionVehicle(tx, req.ctx!.agencyId, {
         vehicleId: contract.vehicleId, to: 'RENTED',
         actorId: req.ctx!.userId, actorName: req.ctx!.fullName, actorKind: 'CONTRACT_SERVICE',
         reason: `Remise du véhicule — contrat ${contract.number}`, sourceType: 'contract', sourceId: id,
       });
-      if (contract.reservationId) {
-        await tx.update(reservations).set({ status: 'IN_PROGRESS', updatedAt: new Date() })
-          .where(eq(reservations.id, contract.reservationId));
-      }
+      await tx.update(reservations).set({ status: 'IN_PROGRESS', updatedAt: new Date() }).where(eq(reservations.id, reservation.id));
       await audit(tx, {
         agencyId: req.ctx!.agencyId, actor: { id: req.ctx!.userId, name: req.ctx!.fullName },
         entityType: 'contract', entityId: id, action: 'CONTRACT_ACTIVATED',
@@ -240,7 +255,6 @@ export class ContractsController {
     });
   }
 
-  /** Amendments — vehicle replacement carries deposit/insurance continuity (reconciliation §2). */
   @Post(':id/amendments')
   @RequirePermission('contract:amend')
   async amend(
@@ -278,7 +292,6 @@ export class ContractsController {
           fuelOut: `${v[0].fuelLevelPct}%`, vin: v[0].vin,
         };
         await tx.update(contracts).set({ vehicleId: body.newVehicleId, status: 'AMENDED', updatedAt: new Date() }).where(eq(contracts.id, id));
-        // continuity: deposit + insurance follow the contract, not the vehicle (documented)
       } else if (body.kind === 'PERIOD') {
         if (!body.newReturnAt) throw new ForbiddenException('newReturnAt requis');
         content.period.returnAt = body.newReturnAt;
@@ -319,7 +332,6 @@ export class ContractsController {
     return result;
   }
 
-  /** PDF generation — server-side Chromium (ADR-0007). */
   @Get(':id/pdf')
   @RequirePermission('contracts:read')
   async pdf(@Param('id', ParseUUIDPipe) id: string, @Res() res: Response, @Req() req: AuthedRequest) {
@@ -353,7 +365,6 @@ export class ContractsController {
   }
 }
 
-// ─── helpers ─────────────────────────────────────────────────────────────────────
 const fmt = (prefix: string, n: number) => `${prefix}-${new Date().getFullYear()}-${String(n).padStart(5, '0')}`;
 
 function blankContract(language: 'fr' | 'ar' | 'en', agencyName: string, ice: string | null, formatted: string): ContractContent {
