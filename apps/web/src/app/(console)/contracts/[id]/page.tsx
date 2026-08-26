@@ -1,5 +1,6 @@
 import { apiFetch } from '@/lib/api';
 import ActionButton from '@/components/ActionButton';
+import CreateDepositForm from '@/components/CreateDepositForm';
 
 interface Detail {
   contract: { id: string; number: number; status: string; language: string; periodStart: string | null; periodEnd: string | null; voidedReason: string | null; blankIssuedAt: string | null; scannedObjectKey: string | null };
@@ -126,7 +127,9 @@ export default async function ContractDetail({ params }: { params: Promise<{ id:
                 </div>
               )}
             </div>
-          ) : <div className="sub">Aucune caution enregistrée.</div>}
+          ) : (
+            <CreateDepositForm contractId={c.id} defaultAmount={s?.deposit.amount ?? ''} />
+          )}
 
           <h2>Inspections liées</h2>
           {d.inspections.length === 0 ? <div className="sub">Aucune inspection liée.</div> : d.inspections.map((i) => (
