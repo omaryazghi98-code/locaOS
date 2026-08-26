@@ -1,6 +1,6 @@
 /**
  * Contract engine service (ADR-0007 + research reconciliation §2):
- * numbering authority (row-locked sequence), structured assembly, immutable versions, 
+ * numbering authority (row-locked sequence), structured assembly, immutable versions,
  * Blank Slate lifecycle (issue → print → reconcile/void), amendments with liability
  * continuity on vehicle replacement.
  */
@@ -22,7 +22,9 @@ export async function nextContractNumber(tx: Tx, agencyId: string): Promise<{ nu
   const rows = await tx.select().from(contractSequences).where(eq(contractSequences.agencyId, agencyId)).for('update');
   if (!rows[0]) {
     await tx.insert(contractSequences).values({ agencyId, nextValue: 2 }).onConflictDoNothing();
-    return { number: 1, formatted: formatContractNumber('L', new Date().getFullYear(), 1) };
+    const a = await tx.select().from(agencies).where(eq(agencies.id, agencyId)).limit(1);
+    const prefix = a[0]?.contractPrefix ?? 'L';
+    return { number: 1, formatted: formatContractNumber(prefix, new Date().getFullYear(), 1) };
   }
   const number = rows[0].nextValue;
   await tx.update(contractSequences).set({ nextValue: number + 1 }).where(eq(contractSequences.agencyId, agencyId));
@@ -38,7 +40,8 @@ export async function newVersion(tx: Tx, agencyId: string, contractId: string, c
   const id = globalThis.crypto.randomUUID();
   const parsed = ContractContent.parse(content);
   await tx.insert(contractVersions).values({
-    id, agencyId, contractId, version, content: JSON.parse(JSON.stringify(parsed, (_, value) => typeof value === 'bigint' ? String(value) : value)) as never,
+    id, agencyId, contractId, version,
+    content: JSON.parse(JSON.stringify(parsed, (_, value) => typeof value === 'bigint' ? String(value) : value)) as never,
     contentHash: contentHash(parsed), createdBy: userId,
   });
   await tx.update(contracts).set({ currentVersionId: id, updatedAt: new Date() }).where(eq(contracts.id, contractId));
@@ -68,6 +71,17 @@ const masked = (docs: AssemblyData['identityDocs'], type: string) =>
   docs.find((d) => d.type === type)?.numberLast4 ? `••••••${docs.find((d) => d.type === type)!.numberLast4}` : null;
 
 const cents = (value: bigint | number | string | null | undefined) => value == null ? null : String(Number(value) / 100);
+
+const snapshotQuoteLines = (quote: typeof quotes.$inferSelect) => {
+  const lines = Array.isArray(quote.lines) ? quote.lines as Array<Record<string, unknown>> : [];
+  return lines.map((line) => ({
+    code: String(line.code ?? ''),
+    label: String(line.label ?? ''),
+    qty: Number(line.qty ?? 1),
+    unitAmount: cents(line.unitAmount as bigint | number | string | null | undefined),
+    total: cents(line.total as bigint | number | string | null | undefined),
+  }));
+};
 
 /** Canonical rental-day calculation: every contract period must derive from pickup/return timestamps. */
 export function rentalDaysFromPeriod(pickupAt: Date, returnAt: Date): number {
@@ -112,8 +126,7 @@ export function assembleContent(data: AssemblyData): ContractContent {
     cinOrPassport: masked(data.identityDocs, 'CIN') ?? masked(data.identityDocs, 'PASSPORT'),
     licenseNumber: masked(data.identityDocs, 'DRIVER_LICENSE'),
     licenseIssuedOn: data.identityDocs.find((x) => x.type === 'DRIVER_LICENSE')?.issueDate ?? null,
-    phone: cust.phone, email: cust.email, address: null,
-    birthDate: null,
+    phone: cust.phone, email: cust.email, address: null, birthDate: null,
   };
   if (v && data.vehicleModel && data.category) {
     c.vehicle = {
@@ -140,6 +153,7 @@ export function assembleContent(data: AssemblyData): ContractContent {
     const inputs = q.inputs as { dailyRate?: string };
     const days = derivedDays ?? Number(q.days);
     c.pricing = {
+      lines: snapshotQuoteLines(q),
       subtotal: cents(q.subtotal),
       dailyRate: inputs.dailyRate ? String(Number(inputs.dailyRate) / 100) : null,
       days: String(days),
