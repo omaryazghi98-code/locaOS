@@ -9,8 +9,7 @@ import { customers, quotes, reservations, vehicleCategories, vehicles } from '..
 import { ZodValidationPipe } from '../common/zod.pipe.js';
 import { AuthGuard, AuthedRequest, PermissionsGuard, RequirePermission } from '../auth/guards.js';
 import { audit } from '../audit/audit.service.js';
-import { appendEvent, dispatchPending, dispatchPendingSafe } from '../events/events.js';
-import { transitionVehicle } from '../fleet/fleet.service.js';
+import { appendEvent, dispatchPendingSafe } from '../events/events.js';
 import { computeBlockers } from '../alerts/scheduler.js';
 
 const CreateSchema = z.object({
@@ -68,7 +67,6 @@ export class ReservationsController {
         depositAmount: cat[0].defaultDeposit,
       });
 
-      // Scenario C guard: vehicle still under an active/overdue contract at pickup time → fail safely
       if (body.vehicleId) {
         const active = await tx.select().from(contracts)
           .where(and(eq(contracts.vehicleId, body.vehicleId), inArray(contracts.status, ['ACTIVE', 'AMENDED']))).limit(1);
@@ -197,6 +195,14 @@ export class ReservationsController {
       if (!r[0]) throw new NotFoundException('Réservation introuvable');
       if (!canTransitionReservation(r[0].status as ReservationStatus, body.to)) {
         throw new ForbiddenException(`Transition ${r[0].status} → ${body.to} non autorisée`);
+      }
+      if (body.to === 'READY') {
+        const blockers = await computeBlockers(tx as never, r[0] as never);
+        if (blockers.length > 0) {
+          throw new ConflictException({
+            error: { code: 'RESERVATION_NOT_READY', message: `Réservation non prête: ${blockers.join(', ')}`, blockers },
+          });
+        }
       }
       if (body.to === 'CANCELLED' && !req.ctx!.permissions.has('reservations:cancel')) {
         throw new ForbiddenException('Permission reservations:cancel requise');
