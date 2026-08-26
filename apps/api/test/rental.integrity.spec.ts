@@ -43,6 +43,7 @@ async function seedFixture(): Promise<Fixture> {
   const agencyA = (await seedClient.query(`insert into agencies (legal_name, contract_prefix) values ('Integrity A ${suffix} SARL','IA') returning id`)).rows[0].id as string;
   const agencyB = (await seedClient.query(`insert into agencies (legal_name, contract_prefix) values ('Integrity B ${suffix} SARL','IB') returning id`)).rows[0].id as string;
 
+  await seedClient.query(`select set_config('app.agency_id', '${agencyA}', false)`);
   const branchId = (await seedClient.query(`insert into branches (agency_id, name, city) values ('${agencyA}','Integrity','Casablanca') returning id`)).rows[0].id as string;
   const email = `owner-${suffix}@integrity-a.test`;
   const userId = (await seedClient.query(`insert into users (email, full_name, password_hash) values ('${email}','Integrity Owner','${pwd}') returning id`)).rows[0].id as string;
@@ -54,11 +55,14 @@ async function seedFixture(): Promise<Fixture> {
   const categoryId = (await seedClient.query(`insert into vehicle_categories (agency_id, code, name, default_daily_rate, floor_daily_rate, default_deposit) values ('${agencyA}','ECO','Economique',30000,25000,400000) returning id`)).rows[0].id as string;
   const category2Id = (await seedClient.query(`insert into vehicle_categories (agency_id, code, name, default_daily_rate, floor_daily_rate, default_deposit) values ('${agencyA}','SUV','SUV',50000,40000,600000) returning id`)).rows[0].id as string;
   const modelA = (await seedClient.query(`insert into vehicle_models (agency_id, make, model, year, fuel_type) values ('${agencyA}','Dacia','Sandero',2025,'PETROL') returning id`)).rows[0].id as string;
-  const modelB = (await seedClient.query(`insert into vehicle_models (agency_id, make, model, year, fuel_type) values ('${agencyB}','Dacia','Duster',2025,'PETROL') returning id`)).rows[0].id as string;
-
   const vehicleId = (await seedClient.query(`insert into vehicles (agency_id, category_id, model_id, plate, vin, current_branch_id) values ('${agencyA}','${categoryId}','${modelA}','IA-11111','IA-VIN-111111111111','${branchId}') returning id`)).rows[0].id as string;
   const vehicle2Id = (await seedClient.query(`insert into vehicles (agency_id, category_id, model_id, plate, vin, current_branch_id) values ('${agencyA}','${categoryId}','${modelA}','IA-22222','IA-VIN-222222222222','${branchId}') returning id`)).rows[0].id as string;
+
+  await seedClient.query(`select set_config('app.agency_id', '${agencyB}', false)`);
+  const modelB = (await seedClient.query(`insert into vehicle_models (agency_id, make, model, year, fuel_type) values ('${agencyB}','Dacia','Duster',2025,'PETROL') returning id`)).rows[0].id as string;
   const foreignVehicleId = (await seedClient.query(`insert into vehicles (agency_id, category_id, model_id, plate, vin) values ('${agencyB}','${categoryId}','${modelB}','IB-33333','IB-VIN-333333333333') returning id`)).rows[0].id as string;
+
+  await seedClient.query(`select set_config('app.agency_id', '${agencyA}', false)`);
   const customerId = (await seedClient.query(`insert into customers (agency_id, first_name, last_name, phone) values ('${agencyA}','Test','Customer-${suffix}','+2126${suffix.slice(-8).padStart(8, '0')}') returning id`)).rows[0].id as string;
 
   return { id: agencyA, ownerCookie: await login(email), branchId, categoryId, category2Id, customerId, vehicleId, vehicle2Id, foreignVehicleId };
