@@ -1,4 +1,4 @@
-import { Body, Controller, ForbiddenException, BadRequestException, Get, NotFoundException, Param, ParseUUIDPipe, Post, Req, Query, UseGuards } from '@nestjs/common';
+import { Body, ConflictException, Controller, ForbiddenException, BadRequestException, Get, NotFoundException, Param, ParseUUIDPipe, Post, Req, Query, UseGuards } from '@nestjs/common';
 import { and, desc, eq, gte, lt, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { toMadEquivalent } from '@locaos/domain';
@@ -15,7 +15,7 @@ const PaymentSchema = z.object({
   purpose: z.enum(['RENTAL', 'DEPOSIT', 'DAMAGE', 'FUEL', 'FINE', 'OTHER']).optional(),
   amount: z.string().regex(/^\d+(\.\d{1,2})?$/, 'Montant (ex: 1500 ou 1500.50)'),
   currency: z.enum(['MAD', 'EUR', 'USD']).default('MAD'),
-  fxRate: z.number().positive().optional(),      // required when currency ≠ MAD — human-confirmed
+  fxRate: z.number().positive().optional(),
   contractId: z.string().uuid().optional(),
   reservationId: z.string().uuid().optional(),
   note: z.string().max(300).optional(),
@@ -41,7 +41,7 @@ const DepositChargeSchema = z.object({
 });
 
 const CloseSessionSchema = z.object({
-  counted: z.record(z.string(), z.record(z.string(), z.number())), // { MAD: {'20': n…}, EUR: {…} }
+  counted: z.record(z.string(), z.record(z.string(), z.number())),
   fxRates: z.record(z.string(), z.number()).default({}),
   varianceExplanation: z.string().max(300).optional(),
 });
@@ -59,7 +59,6 @@ export class FinanceController {
       .orderBy(desc(payments.receivedAt)).limit(200));
   }
 
-  /** Append-only payment. Cash movements attach to the open session of the user's branch context. */
   @Post('payments')
   @RequirePermission('payments:write')
   async createPayment(@Body(new ZodValidationPipe(PaymentSchema)) body: z.infer<typeof PaymentSchema>, @Req() req: AuthedRequest) {
@@ -109,14 +108,12 @@ export class FinanceController {
     return result;
   }
 
-  /** Refund = reversal entry linked to the original (append-only; permissioned; audited). */
   @Post('refunds')
   @RequirePermission('payments:reversal')
   async refund(@Body(new ZodValidationPipe(RefundSchema)) body: z.infer<typeof RefundSchema>, @Req() req: AuthedRequest) {
     const result = await withTenant(req.ctx!.agencyId, async (tx) => {
       const original = await tx.select().from(payments)
         .where(and(eq(payments.id, body.reversesPaymentId), eq(payments.agencyId, req.ctx!.agencyId))).limit(1);
-
       if (!original[0]) throw new NotFoundException('Paiement original introuvable');
       const alreadyRefunded = await tx.select({ sum: sql<string>`coalesce(sum(amount), 0)` }).from(payments)
         .where(eq(payments.reversesPaymentId, original[0].id));
@@ -156,9 +153,18 @@ export class FinanceController {
   @RequirePermission('deposits:write')
   async createDeposit(@Body(new ZodValidationPipe(DepositSchema)) body: z.infer<typeof DepositSchema>, @Req() req: AuthedRequest) {
     return withTenant(req.ctx!.agencyId, async (tx) => {
-      const contract = await tx.select().from(contracts)
-        .where(and(eq(contracts.id, body.contractId), eq(contracts.agencyId, req.ctx!.agencyId))).limit(1);
-      if (!contract[0]) throw new NotFoundException('Contrat introuvable');
+      const locked = await tx.execute(sql`select id from contracts where id = ${body.contractId} and agency_id = ${req.ctx!.agencyId} for update`);
+      if (!locked.rows.length) throw new NotFoundException('Contrat introuvable');
+
+      const existing = await tx.select().from(deposits)
+        .where(and(eq(deposits.contractId, body.contractId), inArray(deposits.status, ['PLANNED', 'HELD', 'PRE_AUTHORIZED', 'PARTIALLY_CHARGED'])))
+        .limit(1);
+      if (existing[0]) {
+        throw new ConflictException({
+          error: { code: 'DEPOSIT_ALREADY_SECURED', message: 'Une caution active existe déjà pour ce contrat', depositId: existing[0].id },
+        });
+      }
+
       const inserted = await tx.insert(deposits).values({
         agencyId: req.ctx!.agencyId, contractId: body.contractId, amount: cents(body.amount),
         method: body.method, provider: body.method === 'CARD_PREAUTH' ? 'CMI_PLBS (saisie manuelle)' : null,
@@ -180,7 +186,6 @@ export class FinanceController {
     });
   }
 
-  /** Release — human decision. If no return inspection exists we flag (converted research #88). */
   @Post('deposits/:id/release')
   @RequirePermission('deposit:release')
   async release(@Param('id', ParseUUIDPipe) id: string, @Body(new ZodValidationPipe(z.object({ reason: z.string().min(3).max(300) }))) body: { reason: string }, @Req() req: AuthedRequest) {
@@ -212,7 +217,6 @@ export class FinanceController {
     return result;
   }
 
-  /** Charge against deposit — human-confirmed (§14); writes the OUT payment. */
   @Post('deposits/:id/charge')
   @RequirePermission('deposit:charge')
   async charge(@Param('id', ParseUUIDPipe) id: string, @Body(new ZodValidationPipe(DepositChargeSchema)) body: z.infer<typeof DepositChargeSchema>, @Req() req: AuthedRequest) {
@@ -245,7 +249,6 @@ export class FinanceController {
     });
   }
 
-  // ─── Cash sessions: the drawer (killer feature #1) ──────────────────────────────
   @Post('cash-sessions/open')
   @RequirePermission('cash:manage')
   async openSession(@Body(new ZodValidationPipe(z.object({ branchId: z.string().uuid(), openingBalance: z.string().default('0') }))) body: { branchId: string; openingBalance: string }, @Req() req: AuthedRequest) {
@@ -282,7 +285,6 @@ export class FinanceController {
     });
   }
 
-  /** Close: counted denominations per currency → MAD equivalents → variance. Never silently overwritten. */
   @Post('cash-sessions/:id/close')
   @RequirePermission('cash:manage')
   async closeSession(@Param('id', ParseUUIDPipe) id: string, @Body(new ZodValidationPipe(CloseSessionSchema)) body: z.infer<typeof CloseSessionSchema>, @Req() req: AuthedRequest) {
@@ -300,7 +302,7 @@ export class FinanceController {
       let countedEquivalent = countedMAD;
       for (const [cur, denoms] of Object.entries(body.counted)) {
         if (cur === 'MAD') continue;
-        if (!denoms || Object.keys(denoms).length === 0) continue; // empty currency block ≠ counted currency
+        if (!denoms || Object.keys(denoms).length === 0) continue;
         const rate = body.fxRates[cur];
         if (!rate || rate <= 0) throw new BadRequestException(`Taux requis pour la devise comptée ${cur}`);
         const foreign = Object.entries(denoms).reduce<bigint>((acc, [denom, n]) => acc + BigInt(denom) * 100n * BigInt(n), 0n);
@@ -342,7 +344,6 @@ export class FinanceController {
       .where(eq(cashSessions.agencyId, req.ctx!.agencyId)).orderBy(desc(cashSessions.openedAt)).limit(50));
   }
 
-  /** Outstanding balances per contract (totals IN - totals OUT, MAD equivalents). */
   @Get('outstanding')
   @RequirePermission('finance:read')
   async outstanding(@Req() req: AuthedRequest) {
