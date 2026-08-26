@@ -5,7 +5,6 @@ import request from 'supertest';
 import pg from 'pg';
 import { hash } from '@node-rs/argon2';
 import { AppModule } from '../dist/app.module.js';
-import { withTenant } from '../dist/db/client.js';
 import { ROLE_MATRIX } from '@locaos/domain';
 
 process.env.DATABASE_URL ??= 'postgresql://locaos:locaos@127.0.0.1:5432/locaos_test';
@@ -60,7 +59,8 @@ async function seedFixture(): Promise<Fixture> {
 
   await seedClient.query(`select set_config('app.agency_id', '${agencyB}', false)`);
   const modelB = (await seedClient.query(`insert into vehicle_models (agency_id, make, model, year, fuel_type) values ('${agencyB}','Dacia','Duster',2025,'PETROL') returning id`)).rows[0].id as string;
-  const foreignVehicleId = (await seedClient.query(`insert into vehicles (agency_id, category_id, model_id, plate, vin) values ('${agencyB}','${categoryId}','${modelB}','IB-33333','IB-VIN-333333333333') returning id`)).rows[0].id as string;
+  const foreignCategory = (await seedClient.query(`insert into vehicle_categories (agency_id, code, name, default_daily_rate, floor_daily_rate, default_deposit) values ('${agencyB}','ECO-B','Economique B',30000,25000,400000) returning id`)).rows[0].id as string;
+  const foreignVehicleId = (await seedClient.query(`insert into vehicles (agency_id, category_id, model_id, plate, vin) values ('${agencyB}','${foreignCategory}','${modelB}','IB-33333','IB-VIN-333333333333') returning id`)).rows[0].id as string;
 
   await seedClient.query(`select set_config('app.agency_id', '${agencyA}', false)`);
   const customerId = (await seedClient.query(`insert into customers (agency_id, first_name, last_name, phone) values ('${agencyA}','Test','Customer-${suffix}','+2126${suffix.slice(-8).padStart(8, '0')}') returning id`)).rows[0].id as string;
@@ -185,8 +185,9 @@ describe('rental integrity — contract activation', () => {
 describe('rental integrity — inspection linkage', () => {
   it('auto-links reservation inspection to its current contract', async () => {
     const p = period(40, 2);
+    const freshVehicle = (await seedClient.query(`insert into vehicles (agency_id, category_id, model_id, plate, vin, current_branch_id) values ('${F.id}','${F.categoryId}',(select id from vehicle_models where agency_id='${F.id}' limit 1),'IA-INSPECT-${Date.now().toString(36).slice(-6)}','IA-VIN-INSPECT-${Date.now().toString(36)}','${F.branchId}') returning id`)).rows[0].id as string;
     const reservation = await api().post('/api/reservations').set('cookie', F.ownerCookie).send({
-      customerId: F.customerId, categoryId: F.categoryId, vehicleId: F.vehicleId,
+      customerId: F.customerId, categoryId: F.categoryId, vehicleId: freshVehicle,
       branchOutId: F.branchId, branchInId: F.branchId, ...p, dailyRate: '300',
     });
     expect(reservation.status).toBe(201);
@@ -196,7 +197,7 @@ describe('rental integrity — inspection linkage', () => {
 
     const inspection = await api().post('/api/inspections').set('cookie', F.ownerCookie).send({
       clientUuid: crypto.randomUUID(), kind: 'DEPARTURE', reservationId: reservation.body.reservation.id,
-      vehicleId: F.vehicleId, mileageKm: 10000, fuelLevelPct: 90, checklist: { tires: true }, customerAck: true,
+      vehicleId: freshVehicle, mileageKm: 10000, fuelLevelPct: 90, checklist: { tires: true }, customerAck: true,
       customerAckName: 'Test Customer',
     });
     expect(inspection.status).toBe(201);
