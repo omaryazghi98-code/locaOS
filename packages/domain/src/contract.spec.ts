@@ -34,7 +34,10 @@ describe('contract content', () => {
       departureInspectionId: 'insp-out',
       returnInspectionId: null,
     };
-    c.pricing = { subtotal: '3000', dailyRate: '750', days: '4', discount: '200', total: '2800', currency: 'MAD' };
+    c.pricing = {
+      lines: [{ code: 'RENTAL', label: 'Location', qty: 4, unitAmount: '750', total: '3000' }],
+      subtotal: '3000', dailyRate: '750', days: '4', discount: '200', total: '2800', currency: 'MAD',
+    };
     c.deposit = { amount: '2000', method: 'CARD_PREAUTH', status: 'HELD', heldAt: '2026-08-25T05:30:00.000Z' };
     c.vehicle.mileageOut = '48210';
     c.vehicle.fuelOut = '75%';
