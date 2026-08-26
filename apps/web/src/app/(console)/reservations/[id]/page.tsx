@@ -1,13 +1,14 @@
 import { cookies } from 'next/headers';
 import { apiFetch } from '@/lib/api';
 import ActionButton from '@/components/ActionButton';
+import AssignVehicleButton from '@/components/AssignVehicleButton';
 import ContractFromReservationButton from '@/components/ContractFromReservationButton';
 
 interface Detail {
   reservation: { id: string; reference: string; status: string; pickupAt: string; returnAt: string; flightNumber: string | null; notes: string | null; vehicleId: string | null };
   customer: { firstName: string | null; lastName: string | null; companyName: string | null; phone: string } | null;
   quotes: { id: string; version: number; days: number; total: string; depositRequired: string; belowFloor: boolean }[];
-  category: { name: string } | null;
+  category: { id: string; name: string } | null;
   vehicle: { id: string; plate: string; operationalStatus: string } | null;
   blockers: string[];
 }
@@ -59,6 +60,9 @@ export default async function ReservationDetail({ params }: { params: Promise<{ 
             </div>
           ) : <div className="sub">Aucun devis.</div>}
           <div className="btnrow">
+            {!d.vehicle && d.category && ['CONFIRMED', 'VEHICLE_ASSIGNED'].includes(r.status) && (
+              <AssignVehicleButton reservationId={r.id} categoryId={d.category.id} />
+            )}
             {!d.vehicle && <span className="sub">{labels[language].noVehicle}</span>}
           </div>
         </div>
