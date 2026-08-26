@@ -1,26 +1,25 @@
 import { Body, Controller, ForbiddenException, Get, NotFoundException, Param, ParseUUIDPipe, Post, Req, Query, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common';
-import { FileInterceptor } from '@nestjs/platform-express';
-import { and, desc, eq } from 'drizzle-orm';
+import { and, desc, eq, inArray } from 'drizzle-orm';
 import { z } from 'zod';
 import { withTenant } from '../../db/client';
-import { damages, inspections, inspectionPhotos, reservations, vehicles } from '../../db/schema';
+import { contracts, damages, inspections, inspectionPhotos, reservations, vehicles } from '../../db/schema';
 import { ZodValidationPipe } from '../common/zod.pipe.js';
 import { AuthGuard, AuthedRequest, PermissionsGuard, RequirePermission } from '../auth/guards.js';
 import { audit } from '../audit/audit.service.js';
-import { appendEvent, dispatchPending, dispatchPendingSafe } from '../events/events.js';
+import { appendEvent, dispatchPendingSafe } from '../events/events.js';
 import { storage, objectKey, sniffImage } from '../storage/storage.js';
 import { transitionVehicle } from '../fleet/fleet.service.js';
 
 const ChecklistSchema = z.record(z.string(), z.boolean());
 
 const SubmitSchema = z.object({
-  clientUuid: z.string().uuid(),            // offline idempotency key
+  clientUuid: z.string().uuid(),
   kind: z.enum(['DEPARTURE', 'RETURN']),
   contractId: z.string().uuid().optional(),
   reservationId: z.string().uuid().optional(),
   vehicleId: z.string().uuid(),
   customerId: z.string().uuid().optional(),
-  startedAt: z.string().datetime().optional(), // for the <15s too-fast check (research #95)
+  startedAt: z.string().datetime().optional(),
   mileageKm: z.number().int().min(0).max(2_000_000).optional(),
   fuelLevelPct: z.number().int().min(0).max(100).optional(),
   checklist: ChecklistSchema.optional(),
@@ -39,7 +38,6 @@ const SubmitSchema = z.object({
 @Controller('api/inspections')
 @UseGuards(AuthGuard, PermissionsGuard)
 export class InspectionsController {
-  /** Idempotent submission — offline-first PWA replays are no-ops (ADR-0005). */
   @Post()
   @RequirePermission('inspections:write')
   async submit(@Body(new ZodValidationPipe(SubmitSchema)) body: z.infer<typeof SubmitSchema>, @Req() req: AuthedRequest) {
@@ -48,13 +46,34 @@ export class InspectionsController {
         .where(and(eq(inspections.agencyId, req.ctx!.agencyId), eq(inspections.clientUuid, body.clientUuid))).limit(1);
       if (existing[0]) return { inspection: existing[0], duplicate: true };
 
+      let resolvedContractId = body.contractId ?? null;
+      if (body.reservationId) {
+        const reservation = await tx.select().from(reservations)
+          .where(and(eq(reservations.id, body.reservationId), eq(reservations.agencyId, req.ctx!.agencyId))).limit(1);
+        if (!reservation[0]) throw new NotFoundException('Réservation introuvable');
+
+        const linkedContracts = await tx.select().from(contracts)
+          .where(and(
+            eq(contracts.agencyId, req.ctx!.agencyId),
+            eq(contracts.reservationId, body.reservationId),
+            inArray(contracts.status, ['DRAFT', 'SIGNED', 'ACTIVE', 'AMENDED']),
+          )).orderBy(contracts.createdAt).limit(1);
+
+        if (body.contractId) {
+          const explicit = linkedContracts.find((c) => c.id === body.contractId);
+          if (!explicit) throw new ForbiddenException('Le contrat fourni ne correspond pas à la réservation');
+        } else {
+          resolvedContractId = linkedContracts[0]?.id ?? null;
+        }
+      }
+
       const durationSeconds = body.startedAt
         ? Math.max(0, Math.round((Date.now() - new Date(body.startedAt).getTime()) / 1000))
         : null;
 
       const inserted = await tx.insert(inspections).values({
         agencyId: req.ctx!.agencyId, clientUuid: body.clientUuid, kind: body.kind,
-        contractId: body.contractId ?? null, reservationId: body.reservationId ?? null,
+        contractId: resolvedContractId, reservationId: body.reservationId ?? null,
         vehicleId: body.vehicleId, customerId: body.customerId ?? null,
         performedBy: req.ctx!.userId, performedByName: req.ctx!.fullName,
         startedAt: body.startedAt ? new Date(body.startedAt) : null,
@@ -74,7 +93,6 @@ export class InspectionsController {
           .where(and(eq(vehicles.id, body.vehicleId), eq(vehicles.agencyId, req.ctx!.agencyId)));
       }
 
-      // New damage records — evidence first, billing always human-confirmed (§14)
       for (const d of body.newDamages) {
         const dmg = await tx.insert(damages).values({
           agencyId: req.ctx!.agencyId, vehicleId: body.vehicleId,
@@ -83,7 +101,7 @@ export class InspectionsController {
         }).returning();
         await appendEvent(tx, req.ctx!.agencyId, 'DamageNewOnReturn', {
           damageId: dmg[0]!.id, vehicleId: body.vehicleId, zoneCode: d.zoneCode,
-          severity: d.severity, contractId: body.contractId ?? null,
+          severity: d.severity, contractId: resolvedContractId,
         });
       }
       if (body.kind === 'RETURN' && body.fuelLevelPct != null && body.fuelLevelPct < 25) {
@@ -102,7 +120,7 @@ export class InspectionsController {
       await audit(tx, {
         agencyId: req.ctx!.agencyId, actor: { id: req.ctx!.userId, name: req.ctx!.fullName },
         entityType: 'inspection', entityId: inspection.id, action: 'INSPECTION_SUBMITTED',
-        after: { kind: body.kind, mileageKm: body.mileageKm, fuelLevelPct: body.fuelLevelPct, newDamages: body.newDamages.length },
+        after: { kind: body.kind, mileageKm: body.mileageKm, fuelLevelPct: body.fuelLevelPct, newDamages: body.newDamages.length, contractId: resolvedContractId },
       });
       return { inspection, duplicate: false };
     });
@@ -159,7 +177,6 @@ export class InspectionsController {
     });
   }
 
-  /** Field ops: return check-in → vehicle AWAITING_INSPECTION, reservation paused. */
   @Post(':id/complete-return')
   @RequirePermission('inspections:write')
   async completeReturn(@Param('id', ParseUUIDPipe) id: string, @Req() req: AuthedRequest) {
