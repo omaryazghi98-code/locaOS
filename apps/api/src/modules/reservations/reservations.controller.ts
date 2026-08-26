@@ -1,9 +1,8 @@
-import { Body, Controller, ForbiddenException, Get, NotFoundException, Param, ParseUUIDPipe, Post, Req, UseGuards } from '@nestjs/common';
+import { Body, ConflictException, Controller, ForbiddenException, Get, NotFoundException, Param, ParseUUIDPipe, Post, Req, UseGuards } from '@nestjs/common';
 import { and, desc, eq, gte, inArray, lte, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { computeQuote, canTransitionReservation, type ReservationStatus } from '@locaos/domain';
 import { withTenant } from '../../db/client';
-import { ConflictException } from '@nestjs/common';
 import { contracts } from '../../db/schema';
 import { customers, quotes, reservations, vehicleCategories, vehicles } from '../../db/schema';
 import { ZodValidationPipe } from '../common/zod.pipe.js';
@@ -31,6 +30,48 @@ const CreateSchema = z.object({
 }).refine((v) => new Date(v.returnAt) > new Date(v.pickupAt), { message: 'returnAt doit être après pickupAt' });
 
 const cents = (s: string) => BigInt(Math.round(Number(s) * 100));
+const ASSIGNABLE_VEHICLE_STATUSES = ['AVAILABLE', 'RESERVED', 'PREPARING', 'CONTRACT_READY', 'IN_TRANSIT'] as const;
+const BOOKING_VEHICLE_STATUSES = ['CONFIRMED', 'VEHICLE_ASSIGNED', 'READY', 'IN_PROGRESS'] as const;
+const LIVE_CONTRACT_STATUSES = ['SIGNED', 'ACTIVE', 'AMENDED'] as const;
+
+async function assertVehicleAssignable(tx: any, agencyId: string, reservation: typeof reservations.$inferSelect, vehicleId: string) {
+  const vehicle = (await tx.select().from(vehicles)
+    .where(and(eq(vehicles.id, vehicleId), eq(vehicles.agencyId, agencyId))).limit(1))[0];
+  if (!vehicle) throw new NotFoundException('Véhicule introuvable');
+  if (vehicle.categoryId !== reservation.categoryId) throw new ConflictException({ error: { code: 'VEHICLE_CATEGORY_MISMATCH', message: 'Le véhicule ne correspond pas à la catégorie réservée' } });
+  if (vehicle.fleetStatus !== 'IN_FLEET') throw new ConflictException({ error: { code: 'VEHICLE_NOT_IN_FLEET', message: 'Le véhicule n’est pas dans la flotte opérationnelle' } });
+  if (!ASSIGNABLE_VEHICLE_STATUSES.includes(vehicle.operationalStatus as typeof ASSIGNABLE_VEHICLE_STATUSES[number])) {
+    throw new ConflictException({ error: { code: 'VEHICLE_NOT_ASSIGNABLE', message: `Véhicule non affectable depuis le statut ${vehicle.operationalStatus}` } });
+  }
+
+  const overlappingReservations = await tx.select({ id: reservations.id, reference: reservations.reference })
+    .from(reservations)
+    .where(and(
+      eq(reservations.agencyId, agencyId),
+      eq(reservations.vehicleId, vehicleId),
+      sql`${reservations.id} <> ${reservation.id}`,
+      inArray(reservations.status, BOOKING_VEHICLE_STATUSES as unknown as ReservationStatus[]),
+      sql`${reservations.pickupAt} < ${reservation.returnAt}`,
+      sql`${reservations.returnAt} > ${reservation.pickupAt}`,
+    )).limit(1);
+  if (overlappingReservations[0]) {
+    throw new ConflictException({ error: { code: 'VEHICLE_RESERVATION_CONFLICT', message: `Véhicule déjà engagé sur ${overlappingReservations[0].reference}` } });
+  }
+
+  const overlappingContracts = await tx.select({ id: contracts.id, number: contracts.number })
+    .from(contracts)
+    .where(and(
+      eq(contracts.agencyId, agencyId),
+      eq(contracts.vehicleId, vehicleId),
+      inArray(contracts.status, LIVE_CONTRACT_STATUSES),
+      sql`${contracts.periodStart} < ${reservation.returnAt}`,
+      sql`${contracts.periodEnd} > ${reservation.pickupAt}`,
+    )).limit(1);
+  if (overlappingContracts[0]) {
+    throw new ConflictException({ error: { code: 'VEHICLE_CONTRACT_CONFLICT', message: `Véhicule déjà engagé sur le contrat ${overlappingContracts[0].number}` } });
+  }
+  return vehicle;
+}
 
 @Controller('api/reservations')
 @UseGuards(AuthGuard, PermissionsGuard)
@@ -174,6 +215,7 @@ export class ReservationsController {
       if (!['CONFIRMED', 'VEHICLE_ASSIGNED'].includes(r[0].status)) {
         throw new ForbiddenException('Affectation impossible depuis ce statut');
       }
+      await assertVehicleAssignable(tx, req.ctx!.agencyId, r[0], body.vehicleId);
       const updated = await tx.update(reservations)
         .set({ vehicleId: body.vehicleId, status: 'VEHICLE_ASSIGNED', updatedAt: new Date() })
         .where(eq(reservations.id, id)).returning();
