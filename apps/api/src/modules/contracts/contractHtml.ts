@@ -24,6 +24,7 @@ export function buildContractHtml(content: ContractContent): string {
   const row = (label: string, value: string, wide = false) =>
     `<tr><th>${label}</th><td class="${wide ? 'wide' : ''}">${value}</td></tr>`;
   const blankBanner = h.mode === 'BLANK' ? `<div class="blank-banner">${t.blankNote}</div>` : '';
+  const pricingLines = (pr.lines ?? []).map((line) => row(line.label || line.code, `${money(line.unitAmount)} × ${line.qty} = ${money(line.total)} ${pr.currency}`)).join('');
 
   return `<!doctype html><html${rtl}><head><meta charset="utf-8"><style>
   :root { color-scheme: light; }
@@ -61,7 +62,7 @@ ${row(t.pickupAt, dt(p.pickupAt))}${row(t.returnAt, dt(p.returnAt))}${row(t.days
 ${row(t.pickupBranch, val(p.pickupBranch))}${row(t.returnBranch, val(p.returnBranch))}
 </table></section>
 <section><h2>${t.pricingSection}</h2><table>
-${row('Sous-total', money(pr.subtotal) + ' ' + pr.currency)}${row(t.dailyRate, money(pr.dailyRate) + ' ' + pr.currency)}${row(t.discount, money(pr.discount) + ' ' + pr.currency)}
+${pricingLines}${row('Sous-total', money(pr.subtotal) + ' ' + pr.currency)}${row(t.dailyRate, money(pr.dailyRate) + ' ' + pr.currency)}${row(t.discount, money(pr.discount) + ' ' + pr.currency)}
 ${row(t.total, `<b>${money(pr.total)} ${pr.currency}</b>`)}
 </table></section>
 <section><h2>${t.depositSection}</h2><table>
