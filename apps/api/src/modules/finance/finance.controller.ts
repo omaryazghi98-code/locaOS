@@ -1,5 +1,5 @@
 import { Body, ConflictException, Controller, ForbiddenException, BadRequestException, Get, NotFoundException, Param, ParseUUIDPipe, Post, Req, Query, UseGuards } from '@nestjs/common';
-import { and, desc, eq, gte, lt, sql } from 'drizzle-orm';
+import { and, desc, eq, gte, inArray, lt, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { toMadEquivalent } from '@locaos/domain';
 import { withTenant } from '../../db/client';
@@ -362,3 +362,4 @@ export class FinanceController {
     });
   }
 }
+

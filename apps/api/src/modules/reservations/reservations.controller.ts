@@ -32,7 +32,7 @@ const CreateSchema = z.object({
 const cents = (s: string) => BigInt(Math.round(Number(s) * 100));
 const ASSIGNABLE_VEHICLE_STATUSES = ['AVAILABLE', 'RESERVED', 'PREPARING', 'CONTRACT_READY', 'IN_TRANSIT'] as const;
 const BOOKING_VEHICLE_STATUSES = ['CONFIRMED', 'VEHICLE_ASSIGNED', 'READY', 'IN_PROGRESS'] as const;
-const LIVE_CONTRACT_STATUSES = ['SIGNED', 'ACTIVE', 'AMENDED'] as const;
+const LIVE_CONTRACT_STATUSES: ('SIGNED' | 'ACTIVE' | 'AMENDED')[] = ['SIGNED', 'ACTIVE', 'AMENDED'];
 
 async function assertVehicleAssignable(tx: any, agencyId: string, reservation: typeof reservations.$inferSelect, vehicleId: string) {
   const vehicle = (await tx.select().from(vehicles)
@@ -266,3 +266,5 @@ export class ReservationsController {
     return result;
   }
 }
+
+
