@@ -41,6 +41,14 @@ const Snapshot = z.object({
   returnInspectionId: empty,
 });
 
+const QuoteLineSnapshot = z.object({
+  code: z.string(),
+  label: z.string(),
+  qty: z.number(),
+  unitAmount: optionalEmpty,
+  total: optionalEmpty,
+});
+
 export const ContractContent = z.object({
   header: z.object({
     agencyName: z.string(),
@@ -67,6 +75,7 @@ export const ContractContent = z.object({
   }),
   period: z.object({ pickupAt: empty, returnAt: empty, days: empty, pickupBranch: empty, returnBranch: empty }),
   pricing: z.object({
+    lines: z.array(QuoteLineSnapshot).default([]),
     subtotal: optionalEmpty, dailyRate: empty, days: empty, discount: empty, total: empty, currency: z.string().default('MAD'),
   }),
   deposit: z.object({ amount: empty, method: empty, status: optionalEmpty, heldAt: empty }),
@@ -109,7 +118,7 @@ export function blankContractContent(args: {
     drivers: [],
     vehicle: { plate: b(), makeModel: b(), category: b(), mileageOut: b(), fuelOut: b(), vin: b() },
     period: { pickupAt: b(), returnAt: b(), days: b(), pickupBranch: b(), returnBranch: b() },
-    pricing: { subtotal: b(), dailyRate: b(), days: b(), discount: b(), total: b(), currency: 'MAD' },
+    pricing: { lines: [], subtotal: b(), dailyRate: b(), days: b(), discount: b(), total: b(), currency: 'MAD' },
     deposit: { amount: b(), method: b(), status: b(), heldAt: b() },
     insurance: { franchiseAmount: null, cdw: null, superCdw: null, exclusions: null },
     crossBorder: { authorized: null, zones: null, admissionTemporaireRef: b() },
