@@ -11,7 +11,7 @@ import {
 import { ZodValidationPipe } from '../common/zod.pipe.js';
 import { AuthGuard, AuthedRequest, PermissionsGuard, RequirePermission } from '../auth/guards.js';
 import { audit } from '../audit/audit.service.js';
-import { appendEvent, dispatchPending, dispatchPendingSafe } from '../events/events.js';
+import { appendEvent, dispatchPendingSafe } from '../events/events.js';
 import { assembleContent, loadContract, loadVersionContent, newVersion, nextContractNumber } from './contracts.service.js';
 import { buildContractHtml } from './contractHtml.js';
 import { htmlToPdf } from '../pdf/pdf.service.js';
@@ -200,6 +200,25 @@ export class ContractsController {
         .where(and(eq(reservations.id, contract.reservationId), eq(reservations.agencyId, req.ctx!.agencyId))).limit(1))[0];
       if (!reservation) throw new NotFoundException('Réservation introuvable');
       if (reservation.status !== 'READY') throw new ForbiddenException('La réservation doit être READY avant remise');
+      if (reservation.vehicleId !== contract.vehicleId) throw new ForbiddenException('Le véhicule du contrat ne correspond pas à la réservation');
+
+      const vehicle = (await tx.select().from(vehicles)
+        .where(and(eq(vehicles.id, contract.vehicleId), eq(vehicles.agencyId, req.ctx!.agencyId))).limit(1))[0];
+      if (!vehicle) throw new NotFoundException('Véhicule introuvable');
+      if (vehicle.categoryId !== reservation.categoryId) throw new ForbiddenException('Le véhicule ne correspond pas à la catégorie réservée');
+      if (vehicle.fleetStatus !== 'IN_FLEET') throw new ForbiddenException('Le véhicule n’est plus dans la flotte opérationnelle');
+
+      const conflictingReservation = await tx.select({ reference: reservations.reference })
+        .from(reservations)
+        .where(and(
+          eq(reservations.agencyId, req.ctx!.agencyId),
+          eq(reservations.vehicleId, vehicle.id),
+          sql`${reservations.id} <> ${reservation.id}`,
+          inArray(reservations.status, ['CONFIRMED', 'VEHICLE_ASSIGNED', 'READY', 'IN_PROGRESS'] as any),
+          sql`${reservations.pickupAt} < ${reservation.returnAt}`,
+          sql`${reservations.returnAt} > ${reservation.pickupAt}`,
+        )).limit(1);
+      if (conflictingReservation[0]) throw new ForbiddenException(`Véhicule déjà engagé sur ${conflictingReservation[0].reference}`);
 
       const departure = await tx.select().from(inspections)
         .where(and(eq(inspections.reservationId, reservation.id), eq(inspections.kind, 'DEPARTURE'))).limit(1);
@@ -337,7 +356,7 @@ export class ContractsController {
     });
     const pdf = await htmlToPdf(buildContractHtml(content));
     res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', `inline; filename="contrat-${id}.pdf"`);
+    res.setHeader('Content-Disposition', `inline; filename=\"contrat-${id}.pdf\"`);
     res.send(pdf);
   }
 
