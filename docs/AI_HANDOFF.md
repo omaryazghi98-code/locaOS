@@ -7,25 +7,26 @@
 
 ## Current checkpoint
 
-**Date:** 2026-08-25 04:xx Africa/Casablanca
+**Date:** 2026-08-26 05:20 Africa/Casablanca
 
-**Engineering status:** B2.1–B2.3 implemented and locally verified. B2.5 has now been audited; no B2.5 code changes have been made yet.
+**Engineering status:** B2.1–B2.3 implemented and previously verified. The accessibility/responsive B2.5 audit exists as a documented baseline, but that work has not been implemented yet. The project is now in a **rental-operations / operator-workflow audit** and handover-integrity hardening phase.
 
-**Latest remote commit at handoff creation:** `11a077b` plus this audit-documentation commit.
+**Latest remote checkpoint before this handoff update:** `e4e4006` plus the preceding integrity/audit commits. This handoff update itself creates the next documentation commit.
 
 ### Verified green locally
 
-- `pnpm --filter @locaos/domain test` → **25/25 passed**
-- `pnpm --filter @locaos/domain typecheck` → passed
-- `pnpm typecheck` → domain + API + web all passed
-- `pnpm lint` → **0 errors** (warnings only)
+- `pnpm typecheck` → domain + API + web passed after the handover hardening fixes
 - `pnpm build` → production build passed; **19 routes generated**
-- `pnpm db:start` → Windows embedded PostgreSQL starts successfully
-- `pnpm db:status` → PostgreSQL running on `127.0.0.1:5432`
-- `pnpm test:ci` → **47/47 integration tests passed**
-- 7 migrations applied from a clean test DB
-- `locaos_app` provisioned as non-superuser with RLS enforced
-- Working tree was clean before this handoff update
+- `pnpm test:ci` → **57/57 tests passed** after the rental-integrity fixture and implementation fixes
+- `test/rental.integrity.spec.ts` → **7/7 passed**
+- `test/integration.spec.ts` → **47/47 passed**
+- `test/contract.logic.spec.ts` → **3/3 passed**
+- Tenant isolation / PostgreSQL RLS sweeps remain green
+- Test DB migrations remain up to date at 7 migrations and `locaos_app` is provisioned as a non-superuser with RLS enforced
+
+### Known local working-tree caveat
+
+The developer machine has an intentional local modification in `apps/api/src/seed.ts` adding pricing `lines` to an existing seed fixture. Do **not** discard it or overwrite it while syncing. The file was modified locally to repair the contract pricing shape after `lines` became required.
 
 ## Implemented phases
 
@@ -107,188 +108,358 @@ Several real environment/code integration issues were discovered and fixed durin
 - Root workspace build command
 - Strict TypeScript issues exposed by B2 integration
 
-The result is now verified on Windows through the complete build + 47-test integration pipeline.
+## Rental integrity hardening — VERIFIED
 
-## Important verification facts
+This is now a completed and tested foundation layer.
 
-### Production build
+### Vehicle assignment
 
-`pnpm build` succeeds and Next.js reports 19 generated routes.
+`apps/api/src/modules/reservations/reservations.controller.ts` now validates an assignment against:
 
-Remaining build output consists of non-blocking warnings, including a few unused variables/imports and the Next.js ESLint plugin notice. These are not currently blockers.
+- same agency / tenant
+- reserved category
+- operational fleet membership
+- assignable vehicle operational state
+- overlapping reservation commitments
+- overlapping live contract commitments
 
-### Integration suite
+Regression coverage exists for:
 
-`pnpm test:ci` completed successfully with:
+- foreign-agency vehicle → rejected
+- wrong-category vehicle → rejected
+- maintenance vehicle → rejected
+- overlapping committed vehicle → rejected
 
-- 1 test file passed
-- **47 tests passed**
-- tenant isolation / RLS sweeps green
-- financial boundary tests green
-- concurrent vehicle transition test green
-- storage/audit integrity tests green
+### Contract activation / handover
+
+`apps/api/src/modules/contracts/contracts.controller.ts` revalidates current reservation/vehicle state at activation instead of trusting stale stored assignment data.
+
+Regression coverage verifies a tampered or stale contract/vehicle mismatch cannot activate.
+
+### READY gating
+
+Reservation transition to `READY` is enforced server-side. The API recomputes current blockers and returns `409 RESERVATION_NOT_READY` if prerequisites remain.
+
+### Departure inspection
+
+Reservation-driven departure inspections are linked to the current contract where appropriate, and duplicate `clientUuid` submissions are idempotent.
+
+### Deposit capture
+
+Deposit creation was made duplicate-safe so repeated retries cannot create multiple live deposits for the same contract.
+
+### Integrity test result
+
+The dedicated rental-integrity suite is **7/7 green**, and the complete CI-style suite is **57/57 green**.
+
+## Operator workflow audit — current findings
+
+The product is now being tested as an actual rental-agent workflow instead of only as API/domain surfaces.
+
+Canonical journey under audit:
+
+`Customer → Reservation → Category/vehicle → Quote → Contract → Departure inspection → Deposit → READY → Handover/activation → Active rental → Alerts/exceptions → Return inspection → Charges/settlement → Deposit release/charge → Contract close → Vehicle back to fleet`
+
+### Finding: customer creation was a real P0 UI gap — FIXED
+
+Before this change:
+
+- `/customers` had a customer list but no creation action
+- `/reservations/new` only allowed selecting pre-existing demo customers
+- a real walk-in / phone booking could not be onboarded manually through the UI
+
+Implemented:
+
+- `apps/web/src/app/(console)/customers/page.tsx` now exposes `+ Nouveau client`
+- a reusable customer entry form is wired to the existing authenticated `/api/customers` write surface
+- `apps/web/src/app/(console)/reservations/new/page.tsx` now exposes `+ Nouveau client` inline beside the customer selector
+- newly created customer is automatically selected in the reservation form
+- the new reservation page now explicitly allows no customer until selected/created instead of silently choosing the first demo customer
+- a back link was added to the new-reservation page
+
+Relevant commits:
+
+- `792b232` — expose standalone customer creation
+- `e4e4006` — enable inline customer creation in reservations
+
+### Finding: category vs exact vehicle selection is already a good model
+
+Current reservation creation supports:
+
+- required rental category
+- optional exact vehicle assignment
+- available vehicle choices are filtered by category/status in the UI
+- server-side assignment integrity checks are now much stronger
+
+Do not replace this with mandatory pre-assignment. A reservation may correctly sell a category first and receive a specific plate later.
+
+### Finding: reservation blocker UX is still incomplete
+
+Current detail page can show blockers such as:
+
+- `vehicle_unassigned`
+- `vehicle_not_ready`
+- `contract_unsigned`
+- `deposit_unsecured`
+- `inspection_missing`
+
+The backend correctly blocks `READY`, but the UI currently exposes `Marquer prête` while blockers remain and then surfaces the server error in a generic alert.
+
+Required UX principle:
+
+> **Every blocker should have an obvious remediation path.**
+
+Target pattern:
+
+- vehicle unassigned → `Assign vehicle`
+- vehicle not ready → explain current fleet state + preparation action
+- contract unsigned → `Open / prepare contract`
+- deposit unsecured → `Secure deposit`
+- departure inspection missing → `Start inspection`
+
+A blocker should represent `problem → explanation → action → completion signal`, not just an internal enum.
+
+### Finding: vehicle assignment state presentation is confusing
+
+Observed on a created reservation:
+
+- reservation status: `VEHICLE_ASSIGNED`
+- displayed fleet status: `AVAILABLE`
+- readiness blocker: `vehicle_not_ready`
+
+The fleet state machine itself is intentionally stricter: handover readiness expects a preparation/reservation-compatible operational state rather than plain `AVAILABLE`.
+
+Next implementation should make the transition semantics explicit and use the existing vehicle transition service rather than inventing a parallel status model.
+
+### Finding: departure inspection UI is not agent-ready
+
+The field inspection page has useful backend foundations including offline queueing and idempotent submission, but the current UI exposes raw UUID/manual vehicle fallback and is confusing from an operator perspective.
+
+Observed issues:
+
+- reservation-driven picker should be the normal path
+- raw vehicle UUID should not be required during normal agent operation
+- current “Démarrer l’inspection” flow is not sufficiently self-explanatory
+- photo capture exists as an API capability but there is no polished agent-facing photo workflow yet
+- return inspection is not yet surfaced as a coherent next step from the active rental
+
+The field foundation must be preserved, but the UI needs a workflow wrapper around it.
+
+### Finding: no backward navigation / step navigation
+
+During browser testing, the reservation/inspection/contract sequence could strand the agent on a detail page or separate inspection route without an obvious prior-step action.
+
+Add explicit, safe back navigation and contextual step navigation. This must not mutate state; it is navigation only.
+
+### Finding: alerts expose actions the current role may not be allowed to perform
+
+Observed:
+
+`Résoudre` → `Permission requise: alerts:resolve`
+
+This is an important UX/security alignment issue.
+
+Rule:
+
+> Do not present an apparently executable action that the current role cannot execute.
+
+Either hide it, disable it with an explanation, or replace it with the action the role is actually allowed to perform (for example `Prendre en charge`). Server authorization remains authoritative.
+
+### Finding: alerts need an auditable case/activity timeline
+
+The desired operational model is richer than a simple Resolve button.
+
+Example target timeline:
+
+- system opened overdue case
+- agent took ownership
+- agent called customer at 16:42
+- no answer
+- WhatsApp sent
+- GPS checked
+- customer contacted
+- manager approved extension
+- return recorded
+- case resolved
+
+Each activity should be traceable with actor, timestamp, action, result/outcome, optional note, linked reservation/contract/customer/vehicle, and next action/follow-up where relevant.
+
+Do not create autonomous punitive actions from telemetry. Human decision points remain explicit and audited.
+
+### Finding: contract/document system is more capable than its current UI suggests
+
+Current contract architecture already supports versioned immutable contract snapshots, FR/AR/EN templates, customer/vehicle/period/pricing/deposit/insurance/cross-border sections, additional drivers, mileage/fuel, consents, and signatures.
+
+The print renderer consumes the immutable contract snapshot and template language; the contract content includes full identity fields in the template model even though some UI views are masked.
+
+Do not weaken the immutable snapshot model just to make contracts editable. After a contract is issued/signed, changes should flow through the existing amendment/void/versioning mechanisms.
+
+### Finding: contract language must be explicit and consistent
+
+Browser testing showed language/content inconsistency when switching UI language and printing contracts.
+
+Required behavior:
+
+- operator chooses FR / AR / EN for the contract output
+- the selected language is serialized with the contract snapshot
+- headings, labels, clauses, signatures and document text all use that template
+- Arabic uses RTL layout
+- the UI locale and contract-output language should not be assumed to be identical unless explicitly chosen
+
+Current template definitions already contain FR/AR/EN dictionaries; the remaining work is making the selection/UX deterministic and consistent across the whole print workflow.
+
+### Finding: contract format should follow actual rental-document patterns
+
+Real Moroccan rental forms reviewed during this audit consistently expose a richer rental-document structure than the current simple PDF presentation.
+
+Observed/reference fields include:
+
+- renter identification
+- CIN/passport
+- driving licence
+- additional driver(s)
+- vehicle make/model
+- registration
+- VIN/chassis
+- rental dates
+- tariff / duration / totals
+- deposit
+- insurance / deductible
+- mileage / fuel at departure and return
+- vehicle condition / damages
+- accessories/documents
+- customer + agency signatures/stamp
+
+locaOS should therefore evolve the contract renderer around **versioned document templates**, not one universal layout.
+
+Important: legal compliance is not being inferred solely from these examples. Any field marked as legally required must be validated against current Moroccan requirements before being hard-coded as mandatory.
+
+### Finding: contract copies / package
+
+Target operational document workflow:
+
+- Agency copy
+- Customer copy
+- Departure inspection / condition report
+- Deposit receipt/confirmation
+- Applicable declaration or authorization where required
+
+Printing/exporting should be auditable, and printing a blank contract must never create a financial record.
+
+### Finding: identifier masking needs separate presentation policies
+
+Customer identity numbers are stored encrypted at rest and revealed only through an audited permissioned endpoint. This is good and must be preserved.
+
+Do not assume the same masking policy should apply to:
+
+- secure database record
+- agent UI
+- signed rental contract
+- customer copy
+- internal/exported reports
+
+The document-template layer must be able to express whatever identifier display is required after legal/document validation.
+
+### Finding: pricing needs a real owner-configurable rule engine
+
+Current reservation creation accepts an agent-entered daily rate and compares it with a category floor.
+
+This is not yet the desired commercial model.
+
+Target hierarchy:
+
+`Agency defaults → category/vehicle price → duration band → seasonal/date rule → optional customer/channel rule → authorized discount → floor/MAP/override`
+
+Example:
+
+- 1–4 days → 350 MAD/day
+- 5–14 days → 300 MAD/day
+- 15–29 days → 275 MAD/day
+- 30+ days → 250 MAD/day
+
+Every quote should preserve the rule/version that produced it so historical contracts remain explainable.
+
+The observed MAP warning where the visible daily rate appeared above the displayed floor must be investigated before changing pricing semantics.
+
+### Finding: management visibility must be preserved as a first-class goal
+
+The product spec/handoff direction remains owner/manager-centric for detailed visibility.
+
+Future management surfaces should be able to drill into:
+
+- revenue / outstanding balances
+- deposits
+- fleet utilization
+- revenue and profitability by vehicle
+- maintenance cost / downtime
+- document expiry/compliance risk
+- reservations at risk
+- overdue rentals
+- missing signatures / deposits / inspections
+- alerts and staff activity
+- operational exceptions
+
+No AI-generated insight should bypass source records or human approval requirements.
+
+### Finding: click-to-call is feasible as an integration boundary
+
+Future architecture should support a `Call customer` action from customer/reservation/alert contexts without hard-coding a vendor now.
+
+Minimum abstraction:
+
+`telephony provider/PBX/SIP → call event/activity → linked customer/reservation/case → audit timeline`
+
+The call activity should preserve actor, target, time/status/duration when available, and outcome/note. Provider state must truthfully report MOCK / UNAVAILABLE / production state rather than pretending a call succeeded.
+
+## Document/privacy guidance from current audit
+
+The customer/contract document examples reviewed during this audit suggest that real rental paperwork commonly identifies the renter directly and includes licence/identity fields, while locaOS currently uses masked identity in some UI/document views.
+
+Do not convert this observation into a claim of legal compliance. Treat it as a document-template requirement to validate against current Moroccan rental/document rules.
+
+The rental contract should be modeled as a rental agreement, not automatically as a generic `wakala` / power-of-attorney instrument. Cross-border or special authorizations are separate document/use cases and should be modeled explicitly.
+
+## Current product-state audit summary
+
+### P0 / blocking operational gaps
+
+1. Customer onboarding UI — **fixed**.
+2. Reservation blocker remediation — **not yet fixed**.
+3. Departure/return inspection UX — **not yet fixed**.
+4. Role/action alignment on alerts — **not yet fixed**.
+5. Operator step/back navigation — **not yet fixed**.
+
+### P1 / major workflow improvements
+
+1. Vehicle reservation/preparation state presentation.
+2. Explicit contract language/output selection.
+3. Versioned Moroccan-style document templates and print package.
+4. Owner-configurable tiered pricing/MAP.
+5. Auditable activity/case timeline for operational interventions.
+6. Return settlement / deposit lifecycle UI.
+7. Manager/owner drill-down reporting.
+8. Telephony integration boundary.
 
 ## B2.5 — Accessibility + Responsive Audit
 
 **Audit date:** 2026-08-25
 
-**Scope inspected on the canonical branch:**
+The earlier B2.5 audit remains valid as a separate backlog. It covered:
 
-- `apps/web/src/app/globals.css`
-- `apps/web/src/components/Shell.tsx`
-- `apps/web/src/app/(console)/layout.tsx`
-- `apps/web/src/components/PageHeader.tsx`
-- `apps/web/src/components/DataTable.tsx`
-- `apps/web/src/components/FilterBar.tsx`
-- `apps/web/src/components/ConfirmAction.tsx`
-- `apps/web/src/components/EmptyState.tsx`
-- `apps/web/src/app/(console)/fleet/page.tsx`
-- `apps/web/src/components/FocusMode.tsx`
+- visible keyboard focus
+- responsive Shell/navigation
+- DataTable mobile strategy
+- row interaction semantics
+- ConfirmAction hardening
+- FilterBar correctness
+- catalog-driven shared UI strings
+- Fleet language correctness
+- shared density state
+- loading/error primitives
+- Focus Mode responsive behavior
+- contrast verification
 
-**No code changes were made during this audit.**
-
-### Findings — P0/P1: shared foundation issues to fix before B2.4
-
-#### 1. No reliable visible keyboard focus system
-
-`globals.css` has input focus styling, but there is no general `:focus-visible` treatment for links, buttons, table controls, or other interactive elements. This means keyboard users do not have a consistent visible focus indicator across the console.
-
-**Fix:** establish one global focus-visible token/style for buttons, links, inputs, selects, and other actionable controls. Do not remove browser focus without replacing it.
-
-#### 2. Shell is not responsive
-
-The Shell uses a fixed 208px sidebar, `height: 100vh`, and the main layout has no responsive breakpoints. There is no tablet/mobile navigation strategy. This is a real blocker for the field workflow and narrow screens.
-
-**Fix:** introduce responsive Shell behavior at shared level: desktop sidebar, compact/mobile navigation or drawer, safe main-content width, and usable keyboard behavior.
-
-#### 3. DataTable has horizontal overflow but no complete mobile interaction strategy
-
-`DataTable` wraps tables in `overflowX: auto`, which prevents catastrophic clipping, but there is no mobile-specific affordance, priority-column strategy, row interaction guidance, or breakpoint behavior. The table still assumes desktop semantics and density on narrow screens.
-
-**Fix:** keep semantic tables for desktop, define a clear mobile presentation strategy (horizontal-scroll with visible affordance or controlled responsive card/list treatment where justified), and ensure selectable actions remain usable.
-
-#### 4. DataTable rows are not keyboard-focusable
-
-The component marks table headers with `scope="col"`, but normal rows have no `tabIndex`/keyboard semantics. If row-level navigation/interactions are introduced later, the shared component would not yet support them accessibly.
-
-**Fix:** define the intended row interaction model. For clickable rows, use actual links/buttons inside cells or explicit row semantics; do not make arbitrary table rows keyboard targets without a clear action contract.
-
-#### 5. ConfirmAction focus management is only partially robust
-
-`ConfirmAction` implements Escape handling, focus return, and a focus trap, which is good. However, it uses a hand-rolled overlay and dialog with inline layout styles, no scroll-lock behavior, and no inert/background suppression. The current focus trap should be kept but hardened rather than replaced with `window.confirm`.
-
-**Fix:** preserve dialog semantics, strengthen initial focus, focus return, background interaction isolation, scroll behavior, and responsive dialog sizing.
-
-#### 6. FilterBar is functionally incomplete and not ready as a reusable accessibility primitive
-
-The input is hard-coded with `value=""`, so it does not maintain visible filter state. `handleChange` applies the same typed value to every field, and the clear action builds an object with an empty string key instead of clearing each field by key.
-
-This is not merely cosmetic; B2.4 cannot safely build on the current FilterBar.
-
-**Fix before B2.4:** controlled field state or explicit field values, per-field updates, correct reset semantics, accessible labels/clear control, and proper RTL layout.
-
-#### 7. Shared components still contain localized UI strings outside the catalog
-
-Examples include `DataTable` defaults (`Sélectionner tout`, `Sélectionner cette ligne`) and `ConfirmAction` defaults (`Confirmer cette action`, `Annuler`, `OK`). This conflicts with the B1 requirement that FR/AR/EN UI strings be centrally catalog-driven.
-
-**Fix:** move reusable component copy into the shared UI catalog, including AR/EN equivalents.
-
-### Findings — P1: page/screen accessibility and UX issues
-
-#### 8. Fleet reference is hardwired to French strings
-
-`fleet/page.tsx` reads `FLEET_STRINGS.fr` directly even though the Shell supports FR/AR/EN. The page therefore does not follow the active language when the user switches to English or Arabic.
-
-**Fix:** derive the active locale from the same language preference and pass localized labels to the Fleet reference. Keep domain status values locale-neutral.
-
-#### 9. Fleet duplicates density state and controls already present in Shell
-
-Fleet independently reads/writes `locaos-density` and renders its own C/Co/D buttons, while Shell already owns the density preference. This creates two sources of presentation state.
-
-**Fix:** establish a single shared density mechanism. The Shell or a shared hook should own preference state; pages/components should consume it without duplicating persistence logic.
-
-#### 10. Fleet does not actually use `FilterBar` yet
-
-The reference implementation does not provide filtering, despite the original B2.3/B2.4 plan identifying Fleet as the reference for shared list UX.
-
-**Fix:** defer real filtering to B2.4, but do not pretend the current Fleet reference has operational filtering.
-
-#### 11. Fleet loading/error states are ad hoc
-
-The loading state is a plain `<div>`, and the error state is an inline alert rather than shared loading/error primitives. This is workable, but inconsistent with the intended shared UX foundation.
-
-**Fix:** introduce shared `Loading/Skeleton` and `ErrorState` primitives before broad page migration.
-
-#### 12. Focus Mode is semantically decent but not yet responsive by construction
-
-It uses `header`, `section`, `article`, labelled headings, and alert/status patterns, which is a good base. However, no responsive CSS was found for the Focus Mode classes, so its mobile usability depends on unverified default layout behavior.
-
-**Fix:** give Focus Mode explicit responsive layout rules and verify action reachability/reading order at narrow widths.
-
-### Findings — P1/P2: semantic and token consistency
-
-#### 13. Shell navigation has an English-only landmark label
-
-`<nav aria-label="Primary navigation">` is hardcoded in English while FR/AR/EN switching exists.
-
-**Fix:** localize landmark labels through the catalog.
-
-#### 14. Density control group labels are hardcoded per component
-
-Shell has localized density group text but button aria-labels are hardcoded in English (`Compact`, `Comfortable`, `Detailed`). Fleet has hardcoded French aria labels. This should be unified through the catalog.
-
-**Fix:** shared localized density labels/ARIA labels.
-
-#### 15. Contrast has not been formally validated
-
-The theme has explicit tokens for text/muted/status colors, but there are no measured contrast guarantees or documented token-level acceptance criteria. This is an audit gap, not a claim that every color currently fails.
-
-**Fix:** verify key text/status/button combinations against WCAG contrast targets and adjust tokens where needed.
-
-#### 16. Responsive CSS is broadly absent
-
-`globals.css` contains desktop-first fixed dimensions and no media-query strategy for the Shell, tables, calendar, login box, or multi-column layouts. The current `overflowX` on DataTable is a partial mitigation, not a full responsive system.
-
-**Fix:** define shared breakpoints and logical responsive rules before page-specific B2.4 work.
-
-### Things that are already good and should be preserved
-
-- `layout.tsx` keeps role extraction server-side and passes a `RoleKey` into Shell.
-- Shell navigation is role-filtered, but this remains presentation only; API authorization must stay authoritative.
-- `ConfirmAction` uses a real dialog rather than `window.confirm` and already returns focus to its trigger.
-- `DataTable` uses `scope="col"` for headers.
-- Focus Mode uses `header`/`section`/`article` structure and labelled sections.
-- Arabic sets document/section `dir="rtl"`.
-- Client components correctly use the browser-safe API helper rather than importing server-only `next/headers` code.
-- Existing tenant/RLS, audit, financial, and domain invariants are unaffected by this audit.
-
-## B2.5 implementation order derived from the audit
-
-Do not start B2.4 yet. Implement B2.5 in this order:
-
-1. **Shared accessibility tokens/focus system** in `globals.css` and shared controls.
-2. **Shared responsive foundation** for Shell/layout and common containers.
-3. **Fix FilterBar** because B2.4 will depend on it.
-4. **Harden ConfirmAction** (focus, isolation, responsive dialog).
-5. **Unify density state** into a reusable mechanism; remove duplicate Fleet persistence/control logic.
-6. **Make shared-component strings catalog-driven** including DataTable/ConfirmAction/density/navigation labels.
-7. **Responsive DataTable strategy** and accessible row/selection behavior.
-8. **Loading/Error shared primitives** and migrate Fleet to them.
-9. **Fleet active-language correctness** and responsive polish.
-10. **Focus Mode responsive polish**.
-
-### B2.5 verification gate
-
-After implementation, run and observe:
-
-- `pnpm --filter @locaos/domain test`
-- `pnpm typecheck`
-- `pnpm lint`
-- `pnpm build`
-- `pnpm test:ci`
-- manual browser checks for keyboard navigation/focus, dialog Escape/focus return, FR/AR/EN + RTL, desktop/tablet/mobile Shell, Fleet table, and Focus Mode.
-
-Do not declare B2.5 complete from compilation alone; manual accessibility/responsive verification is part of the acceptance gate.
+Do not silently mark these complete merely because the rental workflow is being improved.
 
 ## Current git safety / workflow
 
@@ -297,7 +468,7 @@ Do not declare B2.5 complete from compilation alone; manual accessibility/respon
 - Prefer fast-forward pulls.
 - Do not silently rewrite history.
 - Do not commit generated lockfile normalization unless it is an intentional dependency change.
-- The older local B2.1/B2.2 stash was deliberately preserved as a backup during reconciliation. Do not drop/pop it without explicitly reviewing whether it is still needed.
+- Preserve the local `apps/api/src/seed.ts` change until it is intentionally committed or consciously discarded.
 
 ## Architecture rules future agents must preserve
 
@@ -309,47 +480,87 @@ Do not declare B2.5 complete from compilation alone; manual accessibility/respon
 6. **Visibility is not authorization.** Role-aware navigation must never be treated as the security boundary.
 7. **Client/server boundaries matter.** `next/headers` belongs in server-side code only; client components must use the browser-safe API helper.
 8. **Use the existing domain terminology and invariants.** Do not introduce competing status models or duplicate business rules in the UI.
-9. **Do not expand product scope casually.** Follow the master spec and phase boundaries.
+9. **Do not weaken immutable contract snapshots.** Signed/issued historical contracts remain immutable; use amendments/versioning/voiding for changes.
+10. **Do not invent parallel vehicle status mutations.** Use the existing fleet transition service/state machine.
+11. **Do not treat browser visibility as permission.** API authorization remains authoritative.
+12. **Do not claim legal compliance from industry examples.** Mark legal/document requirements as pending validation until supported by current authoritative sources.
+13. **Do not add autonomous punitive behavior from telemetry.** Human decisions must remain explicit and auditable.
 
-## Known non-blocking items
+## Current verification gate
 
-- A few lint warnings remain (unused vars/imports).
-- Full browser/manual UX validation of Focus Mode, RTL switching, density behavior, and responsive layouts is still desirable before declaring the entire B2 UX phase complete.
-- The existing ESLint/Next plugin warning should be evaluated later, but it is not currently a build blocker.
+Before calling a milestone complete, run the narrowest relevant checks followed by:
 
-## Planned sequence after B2.5
+- `pnpm typecheck`
+- `pnpm build`
+- `pnpm test:ci`
 
-1. **B2.4 — Operational list UX**
-   - Fleet
-   - Reservations
-   - Customers
-   - Contracts
-   - Filtering
-   - Sorting
-   - Grouping where justified
-   - Column visibility
-   - Bulk selection/actions where safe
-   - Saved views only when a clear persistence model is defined
+Current verified result:
 
-2. **B3 — Contract Ready**
-   - Today/tomorrow pickup readiness
-   - Missing-information flags
-   - populated / partial / Blank-Slate paths
-   - batch preparation/printing with audited print actions
-   - no financial side effects from preparation/printing
+- typecheck ✅
+- build ✅
+- 57/57 tests ✅
 
-3. **Platform control plane / God Mode**
-   - platform IAM
-   - support sessions / break-glass
-   - platform audit domain
-   - agency management
-   - feature flags
-   - entitlements / plans
-   - remote configuration
-   - health / emergency controls
-   - release metadata / rollout controls
+Manual verification is still required for operator UX flows.
 
-4. **V2** according to the master spec.
+## Next exact implementation order
+
+### 1. Customer workflow verification
+
+Verify the newly added:
+
+`Customers → + Nouveau client`
+
+and
+
+`Reservations → New reservation → + Nouveau client → customer automatically selected`
+
+Do not redesign it further until the flow is confirmed in-browser.
+
+### 2. Reservation blocker/action system
+
+Replace generic blocker pills and dead-end `Marquer prête` behavior with:
+
+`blocker → explanation → action → completion`
+
+Add clear back navigation and avoid exposing role-forbidden actions.
+
+### 3. Vehicle preparation state
+
+Use the existing fleet transition service so a confirmed reservation with an assigned vehicle becomes operationally prepared/reserved without inventing a second vehicle-state model.
+
+Add regression coverage around reservation assignment → vehicle state → READY gating.
+
+### 4. Field inspection redesign
+
+Make reservation-driven inspection the default, remove raw UUID entry from the normal agent path, add clear departure/return context, photo capture UX, evidence summary, and success/next-step navigation.
+
+### 5. Contract output workflow
+
+Add explicit contract-output language choice and document package actions:
+
+- agency copy
+- customer copy
+- inspection/condition report
+- deposit receipt
+- applicable declarations/authorizations
+
+Preserve immutable contract snapshots.
+
+### 6. Pricing rule engine
+
+Introduce configurable duration bands and owner/category/vehicle floors with explainable quote snapshots.
+
+### 7. Alert/case activity timeline
+
+Implement ownership + auditable intervention activities before full telephony integration.
+
+### 8. Return/settlement workflow
+
+Return inspection → damage/fuel/mileage → extra charges → deposit release/charge → payment/final balance → contract close → vehicle fleet state.
+
+### 9. Owner/manager reporting and telephony
+
+After the operational transaction model is solid, expose drill-down reporting and the provider-neutral click-to-call/activity boundary.
 
 ## Mandatory handoff procedure for every future AI
 
