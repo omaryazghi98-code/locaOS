@@ -26,13 +26,33 @@ async function bootstrap() {
   app.use(urlencoded({ extended: true, limit: '12mb' }));
   app.use(cookieParser());
 
-  // CSRF posture: state-changing requests must come from our own origin (SameSite=Lax + origin check)
-  const allowedOrigins = [`http://localhost:3000`, `http://127.0.0.1:3000`];
+  // CSRF posture: state-changing requests must come from our own origin (SameSite=Lax + origin check).
+  // The API only ever receives browser traffic through the web app's same-origin proxy, so an Origin
+  // whose host matches the (forwarded) request host is legitimately same-origin. Extra origins can be
+  // allowlisted via WEB_ORIGINS (comma-separated) for split-host deployments.
+  const allowedOrigins = [
+    `http://localhost:3000`,
+    `http://127.0.0.1:3000`,
+    ...(process.env.WEB_ORIGINS ?? '')
+      .split(',')
+      .map((o) => o.trim())
+      .filter(Boolean),
+  ];
+  const isSameOriginAsHost = (origin: string, req: import('express').Request): boolean => {
+    try {
+      const forwardedHost = (req.headers['x-forwarded-host'] as string | undefined)?.split(',')[0]?.trim();
+      const host = forwardedHost || req.headers.host;
+      return Boolean(host) && new URL(origin).host === host;
+    } catch {
+      return false;
+    }
+  };
   app.use((req: import('express').Request, res: import('express').Response, next: () => void) => {
     if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method)) {
       const origin = req.headers.origin;
       const hasSession = Boolean(readCookie(req.headers.cookie, 'locaos_session'));
-      if (hasSession && origin && !allowedOrigins.includes(origin)) {
+      const originAllowed = !origin || allowedOrigins.includes(origin) || isSameOriginAsHost(origin, req);
+      if (hasSession && !originAllowed) {
         res.status(403).json({ error: { code: 'ORIGIN_REJECTED', message: 'Origin non autorisée' } });
         return;
       }
