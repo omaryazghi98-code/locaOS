@@ -7,10 +7,17 @@ settings:
 importers:
 
   .:
-    devDependencies:
+    optionalDependencies:
+      '@embedded-postgres/darwin-x64':
+        specifier: 17.10.0-beta.17
+        version: 17.10.0-beta.17
       '@embedded-postgres/linux-x64':
         specifier: 17.10.0-beta.17
         version: 17.10.0-beta.17
+      '@embedded-postgres/windows-x64':
+        specifier: 17.10.0-beta.17
+        version: 17.10.0-beta.17
+    devDependencies:
       '@eslint/js':
         specifier: ^9.18.0
         version: 9.39.5
@@ -3059,7 +3066,8 @@ snapshots:
   '@embedded-postgres/linux-ppc64@17.10.0-beta.17':
     optional: true
 
-  '@embedded-postgres/linux-x64@17.10.0-beta.17': {}
+  '@embedded-postgres/linux-x64@17.10.0-beta.17':
+    optional: true
 
   '@embedded-postgres/windows-x64@17.10.0-beta.17':
     optional: true

@@ -20,6 +20,12 @@
     "paths": {
       "@/*": [
         "./src/*"
+      ],
+      "@locaos/domain": [
+        "../../packages/domain/src/index.ts"
+      ],
+      "@locaos/domain/*": [
+        "../../packages/domain/src/*.ts"
       ]
     },
     "isolatedModules": true
