@@ -51,8 +51,17 @@ export class AuthController {
     });
     dispatchPendingSafe();
 
+    // Cross-site embedding (e.g. the v0 preview iframe) drops SameSite=Lax cookies, which would
+    // leave the browser authenticated-but-cookieless and bounce it back to /login. When the request
+    // arrives over HTTPS (forwarded proto) or the deployment opts in via COOKIE_SAMESITE=none, issue
+    // the session as SameSite=None; Secure so it survives the iframe; otherwise keep Lax for plain
+    // http localhost dev. SameSite=None mandates Secure.
+    const fwdProto = (req.headers['x-forwarded-proto'] as string | undefined)?.split(',')[0]?.trim().toLowerCase();
+    const httpsRequest = fwdProto === 'https';
+    const sameSite: 'lax' | 'strict' | 'none' = env.cookieSameSite === 'none' || httpsRequest ? 'none' : env.cookieSameSite;
+    const secure = sameSite === 'none' ? true : env.cookieSecure;
     res.cookie('locaos_session', token, {
-      httpOnly: true, secure: env.cookieSecure, sameSite: 'lax', path: '/',
+      httpOnly: true, secure, sameSite, path: '/',
       maxAge: env.sessionTtlDays * 86_400_000,
     });
     return this.sessionPayload(token, user.id, user.fullName, user.email, ms);

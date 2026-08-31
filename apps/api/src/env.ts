@@ -4,6 +4,7 @@ export const env = {
   sessionSecret: process.env.SESSION_SECRET ?? 'dev-only-insecure-secret-change-me',
   sessionTtlDays: Number(process.env.SESSION_TTL_DAYS ?? 30),
   cookieSecure: process.env.COOKIE_SECURE === 'true',
+  cookieSameSite: (process.env.COOKIE_SAMESITE as 'lax' | 'strict' | 'none' | undefined) ?? 'lax',
   storageDir: process.env.STORAGE_DIR ?? './data/storage',
   chromiumExecutable: process.env.CHROMIUM_EXECUTABLE || '',
   enableScheduler: process.env.ENABLE_SCHEDULER !== 'false',
