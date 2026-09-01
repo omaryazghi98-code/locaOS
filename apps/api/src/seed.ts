@@ -224,7 +224,7 @@ async function main() {
       }
       if (r) {
         content.period = { pickupAt: r.pickupAt.toISOString(), returnAt: r.returnAt.toISOString(), days: '4', pickupBranch: branchCentre.name, returnBranch: branchCentre.name };
-        content.pricing = { dailyRate: '350', days: '4', discount: '0', total: '1400', currency: 'MAD' };
+        content.pricing = { lines: [{ code: 'RENTAL', label: 'Vehicle rental', qty: 4, unitAmount: '350', total: '1400' }], subtotal: '1400', dailyRate: '350', days: '4', discount: '0', total: '1400', currency: 'MAD' };
       }
     }
     if (opts.signedBy) {
@@ -365,3 +365,5 @@ async function main() {
 }
 
 main().then(() => process.exit(0)).catch((e) => { console.error(e); process.exit(1); });
+
+
