@@ -58,11 +58,61 @@ Do not encode commercial rules as vehicle booleans or hardcoded constants. The p
 - channel/customer rules
 - authorized discounts
 - floors/MAP/overrides
-- extras
+- **bookable extras / add-ons**
 - deposits/deductibles
 - currencies and confirmed FX snapshots
 
 Reservations/contracts preserve the effective policy/rule version used to calculate their commercial result.
+
+## Bookable extras / add-ons
+
+Treat extras as a first-class, inventory-aware commercial concept rather than arbitrary notes or one-off columns.
+
+The architecture must support extras that can be:
+
+- priced per day
+- priced per rental
+- quantity-based
+- bundled/included
+- optional or mandatory under a specific rate/product
+- available only for selected branches/vehicles/categories/dates
+- capacity-limited or individually inventory-tracked
+- added during booking or later by an authorized operator/customer
+- changed/cancelled subject to policy
+- fulfilled through a physical asset, service, or provider
+
+Examples to support without hardcoding the catalog:
+
+- infant/baby seats
+- toddler seats
+- booster seats
+- stroller
+- additional driver
+- GPS/navigation device where an agency still offers one
+- mobile Wi-Fi/hotspot
+- toll/transponder service
+- prepaid fuel/refuelling service
+- EV charging service
+- protection/coverage upgrades
+- roadside assistance
+- cross-border option/fee
+- young-driver service/fee
+- winter tyres
+- snow chains
+- roof rack
+- ski rack
+- bicycle rack
+- surfboard rack
+- luggage equipment
+- delivery/collection
+- late pickup / after-hours service
+- one-way/drop-off service
+- vehicle upgrade
+- other agency-defined services
+
+European rental operators commonly expose combinations of these categories; exact availability and pricing are agency/country dependent. The important architectural point is that **the catalog is configurable**, not that locaOS must offer every item. Europcar documents child seats, booster cushions and additional drivers; SIXT documents additional drivers, child seats, GPS, unlimited mileage, refuelling, protection upgrades, cross-border travel, winter tyres, snow chains and ski racks; Avis France lists child seats, mobile Wi-Fi, GPS, travel tablets, luggage racks and snow chains. A Moroccan rental example also exposes additional drivers, baby/booster seats, stroller, and surfboard racks. citeturn0search4turn0search8turn0search9turn0search15
+
+Each selected extra should ultimately be represented in the quote/contract/settlement as an explicit line or linked commercial item, with quantity, unit basis, price, currency, policy/version, and fulfilment status. This prevents extras from becoming invisible revenue or inventory leakage.
 
 ## Workshops, repairers, washing, and tasks
 
@@ -124,6 +174,22 @@ The settlement engine must be able to account for rental base, extensions, late 
 
 Structured activities should carry tenant, actor/system, timestamp, event/action type, subject, linked reservation/contract/customer/vehicle/case/task, outcome, reason, evidence reference, and correlation/request ID. This is the foundation for the future operational-memory/copilot direction.
 
+## Pieces-inspired operational memory
+
+**Pieces is a deliberate architectural inspiration, not a dependency.** Pieces describes a searchable long-term memory that captures workflow context, builds a chronological timeline, lets users retrieve context by time/topic/source, and exposes that context to AI tools through integrations/MCP. citeturn0search0turn0search1
+
+For locaOS, the analogous layer should be an **operational memory**, built from authoritative domain events, cases, activities, communications, documents, decisions, evidence, and user actions. It should make it possible to answer things like:
+
+- What happened with this rental?
+- Why is this vehicle blocked?
+- Who contacted the customer and when?
+- What changed after the return inspection?
+- Which decision/approval caused this amendment?
+- What happened during the last similar incident?
+- Resume this operational case from where the previous agent left it.
+
+The memory layer must remain tenant-scoped, permission-aware, auditable, user-controllable, and grounded in source records. It should **reference authoritative facts rather than replace them**. Pieces' local-first/user-control philosophy is useful inspiration, but locaOS must adapt the concept to multi-tenant business data, Moroccan privacy/compliance requirements, and operational permissions. citeturn0search0turn0search2
+
 ## Public/customer channels
 
 Future agency-branded customer sites consume controlled public projections/APIs, never internal tenant tables or operator permissions. Architecture should support branding/domain, public availability, booking, pricing, payment links, customer portal, documents, trip planning, routes/POIs, vehicle recommendations, flight tracking, WhatsApp, SEO/analytics/consent.
@@ -142,7 +208,7 @@ The future platform control plane is separate from agency operations and covers 
 
 ## Testing guardrails
 
-Foundational modules should test tenant isolation, authorization, idempotency, concurrency, immutable history, provider failure/retries, duplicate webhooks, partial failure, event/audit emission, money/currency correctness, timezone/DST correctness, and policy versioning. Every integration must be testable through a fake adapter without live credentials.
+Foundational modules should test tenant isolation, authorization, idempotency, concurrency, immutable history, provider failure/retries, duplicate webhooks, partial failure, audit/event emission, money/currency correctness, timezone/DST correctness, and policy versioning. Every integration must be testable through a fake adapter without live credentials.
 
 ## Phase Zero rule
 
