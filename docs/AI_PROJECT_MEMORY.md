@@ -1,322 +1,155 @@
 # locaOS — Persistent AI Project Memory
 
-**Purpose:** This file is the persistent memory contract for every AI agent, coding assistant, reviewer, designer, or autonomous tool working on locaOS.
+**Purpose:** Persistent memory contract for every AI agent, coding assistant, reviewer, designer, or autonomous tool working on locaOS.
 
-> **READ THIS BEFORE CHANGING THE PROJECT.**
->
-> Chat history is not the source of truth. AI context may be compressed, sessions may be independent, and agents may not know what was discussed previously. Important product decisions therefore belong in the repository.
+> **READ THIS BEFORE CHANGING THE PROJECT.** Chat history is not the source of truth. Important product decisions belong in the repository.
 
 ## 1. Required reading order
 
-Before implementation, architecture changes, refactors, or feature planning, read:
+1. `docs/AI_PROJECT_MEMORY.md`
+2. `docs/AI_HANDOFF.md`
+3. `docs/LOCAOS_MASTER_PRODUCT_SPEC.md`
+4. `docs/PHASE_ZERO_ARCHITECTURE_GUARDRAILS.md`
+5. Relevant UX/design docs under `docs/ux/`
+6. Recent git history and current branch state
 
-1. `docs/AI_PROJECT_MEMORY.md` — this file; persistent product/architecture memory.
-2. `docs/AI_HANDOFF.md` — current engineering state, verified work, blockers, and workflow audit.
-3. `docs/LOCAOS_MASTER_PRODUCT_SPEC.md` — broader product specification and roadmap.
-4. `docs/PHASE_ZERO_ARCHITECTURE_GUARDRAILS.md` — non-negotiable architecture seams and future-proofing rules.
-5. Relevant UX/design docs under `docs/ux/`.
-6. Recent git history and the current branch state before modifying anything.
+If documents disagree, do not silently choose one. Identify the newer/canonical source and document the conflict/decision.
 
-If these documents disagree, **do not silently choose one**. Determine which document is newer/canonical, preserve the conflict as a documented decision, and update the relevant source-of-truth documents.
+## 2. Product north star
 
-## 2. Why this file exists
+locaOS is intended to become a **Morocco-first operating system for car-rental agencies**, not a conventional CRM with rental tables.
 
-locaOS is intended to become an operational platform for rental agencies, not merely a CRUD rental application.
+The product ambition is:
 
-The central principle is:
+> **ONE OPERATIONAL TRUTH → AGENCY OPERATING SYSTEM → CUSTOMER EXPERIENCE → FIELD/PHYSICAL OPERATIONS → OPERATIONAL MEMORY + AI → ECOSYSTEM**
 
-`ONE OPERATIONAL TRUTH → AGENCY CONSOLE + AGENCY-BRANDED CUSTOMER EXPERIENCE + FUTURE FIELD/MOBILE/AI WORKFLOWS`
+The CRM is one layer. The system should understand what is happening, identify contradictions and risks, explain why something matters, show what should happen next, and eventually help execute authorized actions with human approval for high-impact decisions.
 
-The product must make money for the agency and protect the agency from operational mistakes. Features that affect reservations, availability, pricing, deposits, payments, contracts, vehicle state, settlement, inventory, or customer commitments must therefore be treated as financial/operational logic, not cosmetic UI.
+The desired progression is:
 
-**Never delete, narrow, or forget a previously agreed capability simply because it is not in the current sprint.** If a feature is deferred, record it as deferred rather than silently removing it from the product model.
+`RECORD → DETECT → EXPLAIN → RECOMMEND → HUMAN APPROVAL → ACTION`
 
-## 3. Product north star
+A successful product should make a serious agency owner think:
 
-locaOS should progressively provide:
+> **“This understands and can run my operation.”**
 
-- rental reservations and availability
-- fleet and vehicle lifecycle management
-- customer/driver CRM and identity
+not merely:
+
+> “This is another CRM.”
+
+## 3. Feature memory — do not forget
+
+The full product vision includes, at minimum:
+
+### Agency operating system
+- CRM/customer 360
+- reservations and availability
+- fleet and vehicle lifecycle
 - quotes and configurable pricing
 - contracts, amendments, signatures and document packages
 - departure/return inspections and evidence
-- deposits, payments, refunds and cash reconciliation
+- deposits, payments, refunds, reconciliation
 - authoritative final settlement
-- maintenance and workshop operations
-- washing/cleaning/preparation operations
-- dispatch/task marketplace capabilities
-- communications including WhatsApp, SMS, email, push and telephony
-- owner/manager reporting and operational control
-- compliance and document expiry/risk
-- GPS/telemetry integrations
-- agency-branded public/customer websites
-- customer portal, online booking and payment links
-- trip planning, routes, POIs, vehicle recommendations and flight tracking
-- loyalty/rewards
-- integration adapters for relevant external/government/regulated systems where access and legal basis are actually validated
-- operational memory and AI copilot capabilities inspired by the useful parts of Pieces
-- eventual mobile/PWA/offline field workflows
-- future platform control plane for multi-agency administration, entitlements, billing and support
+- maintenance/workshops
+- washing/cleaning/preparation
+- tasks/dispatch
+- communications
+- reporting and owner/manager control plane
+- compliance/document expiry/risk
+- staff, roles and permissions
+- expenses/treasury/invoicing
 
-This list is a **feature memory**, not a claim that every item is implemented today.
+### Espace Client
+- customer account
+- upcoming/current/past rentals
+- online booking
+- real availability/pricing
+- vehicle selection
+- documents
+- payments/deposit
+- extensions where allowed
+- receipts
+- rental history
+- support/contact
+- personalized offers
+- loyalty status and rewards
 
-## 4. First-class rental extras / add-ons — DO NOT FORGET
-
-A rental reservation must support optional paid or included **extras/add-ons** as real commercial entities.
-
-Examples seen across European rental practices and relevant to Morocco include:
-
-- infant/baby seat
-- toddler/child seat
-- booster seat
-- stroller
-- additional driver
-- GPS/navigation device where offered
-- mobile Wi-Fi/hotspot where offered
-- toll/transponder service where offered
-- prepaid fuel/refuelling option
-- EV charging-related service where applicable
-- roadside assistance upgrades
-- protection/coverage upgrades
-- young-driver service/fee where applicable
-- cross-border travel option where offered and permitted
-- winter tyres/equipment
-- snow chains
-- roof rack
-- ski rack
-- bicycle rack
-- surfboard rack
-- luggage equipment
-- vehicle delivery / collection
-- after-hours pickup/return
-- one-way/drop-off service
-- vehicle upgrade
-- agency-defined custom extras
-
-This list is inspiration, **not a hardcoded mandatory catalog**. Agencies must be able to configure their own extras.
-
-### Extras must be modeled properly
-
-Do NOT implement this as vehicle/reservation booleans such as `hasBabySeat=true`.
-
-An extra should have a configurable catalog/product definition and a reservation/quote line when selected. Pricing must support at least:
-
-- per rental
-- per day
-- quantity-based pricing
-- included/free extras
-- optional vs required extras
-- branch availability
-- category/vehicle applicability
-- date/season rules where needed
-- customer/channel rules where needed
-- inventory limits where the extra is physical
-- taxes/fees where applicable
-- currency and confirmed FX where applicable
-- authorized discounts/overrides
-- cancellation/refund behavior
-
-### Physical extras are inventory
-
-Baby seats, boosters, GPS devices, racks, Wi-Fi units and similar physical equipment cannot be sold beyond actual inventory.
-
-The architecture should eventually support:
-
-`EXTRA CATALOG → EXTRA INVENTORY → RESERVATION ALLOCATION → HANDOVER → RETURN → CONDITION/LOSS/DAMAGE → SETTLEMENT`
-
-A physical extra may itself require inspection/condition evidence and can generate a settlement charge if lost/damaged/late returned, subject to agency policy and applicable law.
-
-### Commercial truth
-
-Selected extras must flow through the same financial truth as the rental:
-
-`CATALOG → QUOTE → RESERVATION → CONTRACT SNAPSHOT → SETTLEMENT → PAYMENT/REFUND → REPORTING`
-
-Historical signed/closed records must retain the exact extra, quantity, price, currency, policy/rule version, and applicable taxes/fees used at the time.
-
-## 5. Pieces-inspired operational memory
-
-The project previously identified **Pieces** as an important inspiration. The goal is not to copy Pieces or make it a dependency. The useful concept is a structured, searchable, user-controlled memory/context layer over real operational activity.
-
-locaOS should eventually make the operational history of a rental understandable as a timeline rather than scattered database rows.
-
-Example:
-
-`Reservation created`
-→ `Vehicle assigned`
-→ `Quote accepted`
-→ `Contract prepared`
-→ `Deposit secured`
-→ `Departure inspection completed`
-→ `Handover/activation`
-→ `Extension requested`
-→ `Manager approved`
-→ `WhatsApp sent`
-→ `Vehicle returned late`
-→ `Return inspection`
-→ `Damage evidence added`
-→ `Settlement calculated`
-→ `Deposit applied`
-→ `Contract closed`
-
-The system should eventually answer questions such as:
-
-- What happened with this rental?
-- Why is this vehicle blocked?
-- Who contacted the customer?
-- What decision did the manager approve?
-- What evidence supports this charge?
-- What happened the previous time this vehicle had a similar issue?
-- What changed since yesterday?
-
-### Memory architecture rules
-
-Operational memory must be built from structured facts/evidence, including:
-
-- tenant/agency/branch
-- actor or system
-- timestamp
-- event/action type
-- subject
-- linked reservation/contract/customer/vehicle/task/case
-- outcome/result
-- reason/note
-- evidence/document/photo reference
-- correlation/request ID
-- provider/external reference where relevant
-
-AI may **detect, summarize, explain, recommend, retrieve context, and prepare actions**. It must not silently rewrite authoritative records, fabricate evidence, bypass permissions, or make autonomous punitive/high-impact decisions.
-
-## 6. Commercial model must remain extensible
-
-Do not encode commercial policy as one boolean or hardcoded constant.
-
-The pricing foundation must eventually support:
-
-- category/vehicle pricing
-- duration bands
-- seasonal/date rules
-- channel/customer rules
-- authorized discounts
-- minimum/floor/MAP rules and overrides
-- unlimited mileage
-- included mileage per day/rental
-- excess mileage pricing
-- paid unlimited-mileage upgrade
-- extras/add-ons
-- deposits/deductibles
-- multiple currencies
-- confirmed transaction FX snapshots
-- agency-specific pricing policies
-- future dynamic pricing without rewriting historical records
-
-Effective policy/rule versions must be preserved with quotes/contracts/settlements.
-
-## 7. Authoritative rental lifecycle
-
-The core operational journey is:
-
-`CUSTOMER → RESERVATION → CATEGORY/VEHICLE → QUOTE → CONTRACT → DEPARTURE INSPECTION → DEPOSIT → READY → HANDOVER/ACTIVATION → ACTIVE RENTAL → EXTENSIONS/ALERTS → RETURN INSPECTION → DÉCOMPTE FINAL → PAYMENT/DEPOSIT APPLICATION → CLOSE → VEHICLE FLEET STATE`
-
-Every state transition must be server-authoritative, tenant-scoped, permission-checked, auditable, and protected against stale state/concurrency where relevant.
-
-The final settlement engine must eventually account for:
-
-- rental base
-- extensions
-- late return
-- mileage
-- fuel
-- extras
-- applicable fees/fines
-- damage
-- discounts/amendments
-- deposit application
-- multiple payments
-- refunds/reversals
-- overpayment/underpayment
-- currency/FX where applicable
-
-Closed settlement results must be immutable/snapshot-able and explainable.
-
-## 8. External integrations — preserve seams
-
-All external systems use:
-
-`locaOS domain → integration port → provider adapter → external system`
-
-Incoming:
-
-`external event/webhook/file → adapter → normalized domain event`
-
-Potential integration families include:
-
-- WhatsApp
-- SMS
-- email
-- push notifications
-- telephony/PBX/SIP/click-to-call
-- payment service providers/payment links
-- GPS/vehicle telemetry
-- maps/routing/POIs
-- flight tracking
-- identity/OCR/document verification
-- e-signature
-- secure document storage
-- accounting/invoicing systems
-- workshops/mechanics
-- washing/preparation providers
-- future partner/task providers
-- NARSA
-- DGSN
-- DGSSI
-- other government or regulated services
-
-### Government integration warning
-
-Do not assume NARSA, DGSN, DGSSI, or any other institution exposes a public API or that a private rental agency automatically has access. Do not invent protocols, permissions, legal requirements, or data-sharing rights.
-
-These remain **RESEARCH / VALIDATION** until official access, legal basis, security requirements, technical documentation, credentials, and operating conditions are confirmed.
-
-## 9. Communications are channel-independent
-
-Customer communication should be an operational activity, not a WhatsApp-only feature.
-
-A communication activity should eventually link to the relevant customer/reservation/contract/vehicle/case/task and preserve actor, time, channel, provider status, template/message identity, and outcome where available.
-
-WhatsApp-specific concerns such as templates, opt-in/consent, delivery status and provider IDs belong in the adapter.
-
-## 10. Public/customer experience
-
-Future customer-facing sites are separate permission surfaces over the same operational truth.
-
-Architecture should support agency-branded public websites with:
-
-- agency branding/theme/domain
+### Agency-branded public experience
+- agency-branded website
+- custom theme/domain where supported
+- online booking
 - real availability
 - real pricing
-- online booking
 - payment links
 - customer portal
-- contract/documents
-- trip planner
-- destinations/routes/POIs
-- vehicle recommendations
-- flight tracking
-- WhatsApp/contact
-- SEO
-- analytics and consent
+- multilingual FR/AR/EN
+- SEO/analytics/consent
+- customer communication
+- future trip planning, routes, POIs, vehicle recommendations and flight tracking
 
-Public applications consume controlled public projections/APIs. Never expose internal tenant tables, operator permissions, secrets, or admin endpoints directly.
+### Loyalty / commercial engine
+- points/credits
+- tiers
+- discounts
+- coupons
+- referrals
+- repeat-customer pricing
+- corporate accounts
+- campaigns
+- customer segmentation
+- partner offers
+- configurable earning/redemption rules
+- expiry, adjustments and reversals
+- auditable loyalty ledger
 
-## 11. Fleet, workshops, washing and dispatch
+The loyalty foundation should eventually support not only rental customers but also service providers/partners such as workshops and washing providers where commercially appropriate.
 
-Future ecosystem seams must support:
+### Ground / physical operations
+Physical operations are a first-class part of the future ecosystem:
+- vehicle delivery
+- vehicle pickup
+- airport/hotel meet-and-greet
+- branch transfers
+- vehicle relocation
+- fueling
+- washing
+- detailing
+- preparation
+- inspection/photo work
+- tire work
+- mechanical work
+- bodywork
+- parts/workshop jobs
+- recovery/towing
+- document pickup/delivery
+- other agency errands
 
-### Workshops / repairers
+These should use a **generic task/dispatch foundation** rather than disconnected one-off features:
 
-- providers
+`TASK CREATED → ASSIGNED → EXECUTING → EVIDENCE → VERIFIED → CLOSED → COST/PERFORMANCE`
+
+Tasks link to the relevant agency/branch/customer/vehicle/reservation/contract/case and remain auditable.
+
+### Washing / preparation hub
+Support future dedicated or partner wash/prep operations:
+
+`RETURN → INSPECTION → WASH/PREP QUEUE → CLEANING → QUALITY CHECK → READY`
+
+Possible capabilities:
+- wash locations
+- queues
+- jobs
+- checklists
+- handoffs
+- photos/evidence
+- internal/external providers
+- pricing
+- performance
+- loyalty/rewards
+
+### Workshops / repair ecosystem
+Support:
+- workshop/provider directory
 - mechanics
 - work orders
 - estimates
@@ -327,162 +160,336 @@ Future ecosystem seams must support:
 - partner relationships
 - provider loyalty/rewards
 
-### Washing / preparation
+### APIs / integrations
+Integration architecture is a strategic foundation, not an afterthought.
 
-- wash locations
-- wash/prep jobs
-- queues
-- handoffs
-- checklists
-- photo/evidence
-- internal or external providers
-- pricing
-- performance
+Use:
+
+`locaOS domain → integration port → provider adapter → external system`
+
+and:
+
+`external webhook/event/file → adapter → normalized domain event`
+
+Potential integration families:
+- WhatsApp
+- SMS
+- email
+- push notifications
+- telephony/PBX/SIP/click-to-call
+- payment providers/payment links
+- banking/financial systems where appropriate
+- GPS/vehicle telemetry
+- maps/routing/POIs
+- flight tracking
+- identity/OCR/document verification
+- e-signature
+- secure document storage
+- accounting/invoicing
+- workshops/mechanics
+- washing/preparation providers
+- task/dispatch partners
+- external booking/distribution channels
+- government/regulatory systems only where official access, legal basis, security requirements and technical documentation are verified
+
+Potential government/regulatory seams include NARSA, DGSN, DGSSI and other relevant institutions, but **never assume a public API, permission, protocol, or legal requirement without authoritative verification**.
+
+### Communications
+Communications must be channel-independent and linked to operational context:
+
+`CUSTOMER/RESERVATION/CONTRACT/VEHICLE/CASE/TASK ↔ COMMUNICATION`
+
+Preserve actor, time, channel, provider status, template/message identity and outcome where available. WhatsApp is one adapter, not the communication architecture.
+
+### Fleet / telemetry
+- authoritative vehicle states
+- maintenance
+- transfers
+- availability
+- GPS/telematics abstraction
+- contradiction detection
+- geofences and richer telemetry later
+- EV/hybrid intelligence later
+
+Telemetry is evidence, not an automatic verdict.
+
+### AI / NAVI
+NAVI is a **working product/intelligence concept**, not necessarily the final brand name.
+
+NAVI should eventually sit above the operational system and help the agency understand and act on its business.
+
+The target experience is not a generic chatbot. NAVI should have access to authorized operational context and eventually be able to:
+- summarize what is happening
+- explain anomalies/contradictions
+- retrieve relevant history
+- connect related events/entities
+- identify unresolved issues
+- recommend next actions
+- prepare actions for approval
+- execute authorized low-risk actions through domain services
+
+Examples:
+- “What is happening today?”
+- “Why is vehicle 214 unavailable?”
+- “What changed since yesterday?”
+- “How much did we actually collect yesterday, and what remains unsettled?”
+- “Prepare everything for tomorrow’s airport pickups.”
+
+AI must never silently rewrite authoritative records, fabricate evidence, bypass permissions, or make autonomous punitive/high-impact decisions.
+
+## 4. Pieces as inspiration — architectural direction
+
+The project explicitly considers **Pieces** a major inspiration for the future experience and infrastructure philosophy.
+
+Do **not** copy Pieces or make it a dependency. Borrow the useful concepts:
+- persistent contextual memory
+- searchable history/context
+- relationships between information
+- timeline/history rather than isolated rows
+- context-aware assistance
+- retrieval of relevant prior information
+- action-oriented intelligence
+- user-controlled/permission-scoped memory
+
+For locaOS, this becomes **operational memory**.
+
+A rental should be understandable as a connected story:
+
+`RESERVATION → VEHICLE → QUOTE → CONTRACT → DEPOSIT → DEPARTURE INSPECTION → HANDOVER → EXTENSION → COMMUNICATION → RETURN → DAMAGE EVIDENCE → SETTLEMENT → PAYMENT/DEPOSIT APPLICATION → CLOSE → VEHICLE PREPARATION`
+
+The system should answer:
+- what happened?
+- why did it happen?
+- who did it?
+- what decision was made?
+- what evidence supports it?
+- what remains unresolved?
+- what happened previously?
+- what changed?
+- what should happen next?
+
+Operational memory should be built from structured facts/evidence including tenant/agency/branch, actor/system, timestamp, event/action type, subject, linked entities, outcome, reason/note, evidence references, correlation/request IDs and external references where relevant.
+
+## 5. Rental commercial truth
+
+Do not hardcode commercial policy as simple booleans/constants.
+
+Pricing must eventually support:
+- vehicle/category pricing
+- duration bands
+- seasonal/date rules
+- channel/customer rules
+- authorized discounts
+- minimum/floor rules and overrides
+- unlimited mileage
+- included mileage
+- excess mileage
+- paid unlimited-mileage upgrades
+- extras/add-ons
+- deposits/deductibles
+- multiple currencies
+- confirmed transaction FX snapshots
+- agency-specific pricing
+- future dynamic pricing
+
+All commercial changes must be checked across:
+
+`QUOTE → RESERVATION → CONTRACT SNAPSHOT → SETTLEMENT → PAYMENT/REFUND → REPORTING`
+
+## 6. First-class extras / add-ons
+
+Examples include baby/child seats, booster, additional driver, GPS, Wi-Fi, toll/transponder service, prepaid fuel/refuelling, roadside/protection upgrades, young-driver service, cross-border option where offered/permitted, winter equipment, roof/bike/surf racks, luggage equipment, delivery/collection, after-hours pickup/return, one-way/drop-off, upgrades and agency-defined extras.
+
+This is configurable inspiration, not a mandatory hardcoded catalog.
+
+Extras must support configurable pricing:
+- per rental
+- per day
+- quantity
+- included/free
+- optional/required
+- branch availability
+- vehicle/category applicability
+- date/season rules
+- customer/channel rules
+- physical inventory limits
+- taxes/fees
+- currency/FX
+- discounts/overrides
+- cancellation/refund behavior
+
+Physical extras follow:
+
+`EXTRA CATALOG → EXTRA INVENTORY → RESERVATION ALLOCATION → HANDOVER → RETURN → CONDITION/LOSS/DAMAGE → SETTLEMENT`
+
+Historical records retain the exact extra, quantity, price, currency, policy/rule version and applicable taxes/fees.
+
+## 7. Authoritative rental lifecycle
+
+Core journey:
+
+`CUSTOMER → RESERVATION → CATEGORY/VEHICLE → QUOTE → CONTRACT → DEPARTURE INSPECTION → DEPOSIT → READY → HANDOVER/ACTIVATION → ACTIVE RENTAL → EXTENSIONS/ALERTS → RETURN INSPECTION → DÉCOMPTE FINAL → PAYMENT/DEPOSIT APPLICATION → CLOSE → VEHICLE FLEET STATE`
+
+Final settlement must eventually account for rental base, extensions, late return, mileage, fuel, extras, fees/fines where applicable, damage, discounts/amendments, deposit application, multiple payments, refunds/reversals, overpayment/underpayment and currency/FX.
+
+Closed financial results must be immutable/snapshot-able and explainable.
+
+## 8. Product experience / “WOW” bar
+
+The product should **not** be presented as a collection of CRUD modules or “a better CRM.”
+
+The core experience must demonstrate **operational orchestration and intelligence**.
+
+Example:
+
+`RETURN EVENT → INSPECTION → COMPARE DEPARTURE/RETURN → DETECT DISCREPANCY → CALCULATE SETTLEMENT → APPLY DEPOSIT/PAYMENT → GENERATE CUSTOMER DOCUMENT → CREATE PREPARATION TASK → UPDATE VEHICLE STATE → SURFACE RELEVANT OWNER/MANAGER INFORMATION`
+
+The owner command center should answer:
+1. What is happening?
+2. What is wrong?
+3. What will go wrong?
+4. What should I do?
+
+NAVI should make these answers immediate, contextual and actionable.
+
+The product bar is a **“holy shit, this understands my operation”** reaction, not merely a prettier dashboard.
+
+## 9. Demo / field-validation direction
+
+Before scaling sales, the product must reach a **credible, impressive, mind-boggling demo state** that communicates the larger operating-system vision.
+
+The demo should show a coherent end-to-end operational scenario rather than isolated pages:
+
+`CUSTOMER BOOKING → VEHICLE/AVAILABILITY → CONTRACT → DEPARTURE INSPECTION → ACTIVE RENTAL → EXTENSION/COMMUNICATION → RETURN → DAMAGE/FUEL/MILEAGE → FINAL SETTLEMENT → DEPOSIT/PAYMENT → VEHICLE PREPARATION → MANAGER/NAVI SUMMARY`
+
+The future vision should also be shown explicitly, clearly labelled as planned/exploratory, never misrepresented as already implemented.
+
+Future-facing demo discussion may include:
+- Espace Client
+- agency-branded website
 - loyalty
+- WhatsApp/communications
+- mobile field workflows
+- washing/preparation
+- workshops/repairs
+- task/dispatch ecosystem
+- APIs/integrations
+- GPS/telemetry
+- trip planning/flight tracking
+- operational memory
+- NAVI/AI
+- broader partner ecosystem
 
-### Generic tasks / dispatch
+The purpose is to demonstrate how all these surfaces eventually connect to the same operational truth and to discover which capabilities agencies actually value/pay for.
 
-One task foundation should support:
+## 10. Field sales / agency onboarding model
 
-- vehicle delivery
-- vehicle pickup
-- airport/hotel meet-and-greet
-- branch transfer
-- vehicle relocation
-- washing/prep
-- fueling
-- workshop run
-- document pickup
-- future third-party dispatch
+Future go-to-market should include professional **field sales / agency success representatives** in major Moroccan markets such as Casablanca, Tanger, Rabat, Marrakech and Agadir, after the founder proves the sales/pilot motion.
 
-Tasks should be assignable, stateful, independently auditable, and linkable to agency/branch/customer/vehicle/reservation/contract/case.
+The role should eventually cover prospecting, introductions, discovery, demo support, pilot acquisition, onboarding, staff training, early support, structured feedback to product and retention/customer success.
 
-## 12. Loyalty / rewards
+For early Casablanca discovery, the founder should prove the meeting/demo/pilot motion before hiring a full field team.
 
-Do not implement loyalty as a single customer `points` field.
+A short-term freelance B2B/BD companion may be used for fieldwork, but should not invent product promises, pricing, integrations or timelines.
 
-Use a configurable ledger capable of supporting:
+Approved briefing principle:
+- current capabilities = clearly stateable
+- in-development = state as in development
+- planned/exploratory = discuss as future direction
+- never fabricate customers, metrics, integrations, legal claims or delivery dates
 
-- program owner
-- eligible actor/entity
-- earning rules
-- redemption
-- points/credits/rewards
-- tiers
-- expiry
-- adjustments/reversals
-- campaigns
-- partner-funded rewards
-- complete audit history
+After each agency meeting, capture structured evidence:
 
-The same foundation should eventually work for rental customers, workshops/repair providers, washing/cleaning providers and other partners.
+`AGENCY → SIZE/FLEET → CURRENT WORKFLOW → CURRENT TOOLS → PAINS → DECISION MAKER → PRODUCT REACTION → VALUED FUTURE FEATURES → OBJECTIONS → PILOT INTEREST → FOLLOW-UP → NOTES`
 
-## 13. Identity, documents and Moroccan workflows
+## 11. Current stage and immediate strategy
 
-Keep secure canonical identity data separate from:
+The project is currently in **product + market validation**, with an existing operational codebase but an unfinished differentiated experience.
 
-- operator presentation
-- customer-facing documents
-- exports
-- retention policies
-- authorization/procuration documents
+Do not rush into nationwide sales, large hiring, investor fundraising or government funding before the product/market evidence justifies it.
 
-Leave explicit seams for OCR, identity verification, document validation, e-signature, secure storage and authorization documents.
+Immediate strategic sequence:
 
-Do not assume a rental contract is automatically a generic `wakala` / power of attorney. Cross-border or special authorizations are explicit document/use cases and require current legal validation.
+1. **Make the operational core authoritative and trustworthy.**
+2. **Design the NAVI/locaOS experience around the whole ecosystem, not CRM pages.**
+3. **Create an impressive end-to-end demo scenario.**
+4. **Use founders to conduct high-quality agency discovery.**
+5. **Secure serious pilot agencies.**
+6. **Iterate based on real agency evidence.**
+7. **Prove the commercial motion.**
+8. **Then hire field/BD/customer-success people to scale.**
+9. **Then use the validated business plan to select appropriate government funding, debt/guarantees or investors.**
 
-Do not hardcode a field as legally mandatory solely because it appeared on a sample contract. Moroccan legal/regulatory requirements must be validated against current authoritative sources.
+The current next engineering priority is therefore **authoritative final settlement + operational truth**, followed by **NAVI/operational-intelligence experience design**, then the impressive demo layer — not random feature accumulation.
 
-## 14. Management and platform control
+## 12. Funding / hiring principle
 
-Owner/manager reporting is a first-class product goal.
+Current budget reality is effectively $0, so validation should minimize cash burn.
 
-Eventually support drill-down into:
+Government funding should be treated as an option to unlock validated needs, not as the reason to build a fictional plan. Do not apply prematurely merely because a program exists.
 
-- revenue
-- outstanding balances
-- deposits
-- utilization
-- profitability by vehicle/category
-- maintenance cost/downtime
-- compliance/document expiry risk
-- overdue rentals
-- reservations at risk
-- missing signatures/deposits/inspections
-- alerts/exceptions
-- staff activity
-- service-provider performance
-- channel performance
+Government programmes, guarantees, loans, investors and founder/revenue financing serve different purposes. Match financing to actual needs and eligibility.
 
-A future platform control plane is separate from agency operations and covers tenant provisioning, entitlements/features, billing, provider configuration, health, support, audit, suspension/reactivation and controlled break-glass access.
+Do not hire developers or field staff merely to manufacture job-creation numbers. Hire for real business requirements and present a realistic employment plan. If a funding programme has employment/value-added criteria, design the genuine business plan around real jobs and economic activity rather than gaming the requirement.
 
-No hidden unrestricted “God mode.”
+## 13. Architecture principles
 
-## 15. AI-agent operating rules
+- One authoritative domain truth.
+- Tenant isolation and server-side authorization are invariants.
+- Financial/contract history is immutable/snapshot-able where required.
+- External systems use provider adapters/ports.
+- Public/customer surfaces consume controlled projections/APIs.
+- Physical inventory must support allocation, handover, return, condition, loss/damage and availability.
+- AI cannot bypass human/domain authority.
+- Telemetry is evidence, not automatic judgment.
+- Features and entitlements must remain separable.
+- Experimental frontend work from Bolt/Lovable/DesignArena/etc. must not replace the NestJS/PostgreSQL source of truth.
+- Future features must have clean seams even when deferred.
+
+## 14. AI-agent operating rules
 
 Every AI working on locaOS must:
-
-1. Read this file and the required companion docs before changing code.
-2. Inspect the current branch and recent history before assuming state.
-3. Treat the repository as the source of truth, not chat memory.
-4. Preserve unrelated existing work.
-5. Never force-push, reset, or delete work to resolve a conflict without explicit authorization.
-6. Never replace the NestJS/PostgreSQL domain source of truth with a prototype frontend/backend.
-7. Keep experimental Bolt/Lovable/DesignArena/Vite work isolated from the monorepo unless explicitly promoted.
+1. Read this file and companion docs before changing code.
+2. Inspect current branch/recent history before assuming state.
+3. Treat repository documents/code as source of truth, not chat memory.
+4. Preserve unrelated work.
+5. Never force-push/reset/delete work without explicit authorization.
+6. Never replace the domain backend with a prototype frontend/backend.
+7. Keep experimental design work isolated unless explicitly promoted.
 8. Use provider adapters for external integrations.
 9. Never fabricate government API access or legal requirements.
 10. Never silently change historical financial/contract truth.
-11. Preserve tenant isolation and server-side authorization.
+11. Preserve tenant isolation/server authorization.
 12. Add regression tests for financial, lifecycle, concurrency, idempotency and authorization changes.
-13. Run the appropriate typecheck/build/test suite after implementation.
+13. Run appropriate typecheck/build/test suites.
 14. Update this file or `AI_HANDOFF.md` when a meaningful product/architecture decision or newly discovered feature is added.
-15. When an idea is not being implemented now, mark it **DEFERRED**, not forgotten.
-16. When a feature changes the commercial model, explicitly check quote → reservation → contract → settlement → reporting implications.
-17. When a feature involves physical inventory, explicitly check allocation, handover, return, condition, loss/damage and availability.
-18. When a feature involves AI, explicitly identify what remains human-authoritative.
+15. If an idea is not being implemented now, mark it **DEFERRED**, not forgotten.
+16. When a feature changes the commercial model, check quote → reservation → contract → settlement → reporting.
+17. When a feature involves physical inventory, check allocation → handover → return → condition → loss/damage → availability.
+18. When a feature involves AI, identify what remains human-authoritative.
 
-## 16. Feature-state vocabulary
-
-Use these labels in project documents:
+## 15. Feature-state vocabulary
 
 - **IMPLEMENTED** — exists and verified.
 - **IN PROGRESS** — actively being implemented.
-- **PLANNED** — agreed product capability not yet implemented.
-- **DEFERRED** — intentionally postponed but retained in product memory.
-- **RESEARCH** — concept requires product/technical/legal/provider validation.
-- **BLOCKED** — known dependency prevents implementation.
-- **REJECTED** — explicitly decided not to build.
+- **PLANNED** — agreed capability not yet implemented.
+- **DEFERRED** — intentionally postponed but retained.
+- **RESEARCH** — requires legal/commercial/technical/provider validation.
+- **BLOCKED** — dependency prevents implementation.
+- **REJECTED** — explicitly not to be built unless reconsidered.
 
 Never silently convert PLANNED/DEFERRED/RESEARCH into REJECTED by omission.
 
-## 17. Change-memory rule
+## 16. Change-memory rule
 
-Whenever a meaningful new idea appears in chat, an external AI review, competitor research, user feedback, or implementation discovery, ask:
+Whenever a meaningful new idea appears in chat, external AI review, competitor research, user feedback or implementation discovery, ask:
 
-**“Does this change what locaOS must eventually be able to represent?”**
+> **Does this change what locaOS must eventually be able to represent?**
 
-If yes, capture it here or in the appropriate canonical product document before the context can be lost.
+If yes, capture it here or in the appropriate canonical product document before context is lost.
 
-Examples include new:
+## 17. Final safety principle
 
-- rental extras
-- pricing rules
-- payment/deposit behavior
-- vehicle states
-- inspection evidence
-- document types
-- integrations
-- government/regulatory requirements
-- communication channels
-- partner services
-- task types
-- loyalty mechanics
-- reporting dimensions
-- AI/memory behavior
-- customer website capabilities
+> **We are building a system that controls real vehicles, real reservations, real money, real documents, real physical work and real customer commitments. Never trade domain correctness for speed of implementation.**
 
-## 18. Final safety principle
-
-> **We are building a system that controls real vehicles, real reservations, real money, real documents, and real customer commitments. Never trade domain correctness for speed of implementation.**
-
-When uncertain, preserve the authoritative source of truth, make the uncertainty explicit, and leave a clean extension seam rather than hardcoding a guess.
+When uncertain, preserve the authoritative source of truth, make uncertainty explicit, and leave a clean extension seam rather than hardcoding a guess.
