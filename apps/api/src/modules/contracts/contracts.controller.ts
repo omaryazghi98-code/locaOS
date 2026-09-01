@@ -1,12 +1,12 @@
-import { Body, Controller, ForbiddenException, Get, HttpCode, NotFoundException, Param, ParseUUIDPipe, Post, Req, Res, UseGuards, UploadedFile, UseInterceptors } from '@nestjs/common';
+import { Body, ConflictException, Controller, ForbiddenException, Get, HttpCode, NotFoundException, Param, ParseUUIDPipe, Post, Req, Res, UseGuards, UploadedFile, UseInterceptors } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { ContractContent } from '@locaos/domain';
 import { withTenant, type Tx } from '../../db/client';
 import {
-  agencies, branches, contractAmendments, contractVersions, contracts, customers, deposits,
-  identityDocuments, inspections, quotes, reservations, vehicleCategories, vehicleModels, vehicles,
+  agencies, branches, contractAmendments, contractVersions, contracts, customers, deposits, damages,
+  identityDocuments, inspections, payments, quotes, reservations, vehicleCategories, vehicleModels, vehicles,
 } from '../../db/schema';
 import { ZodValidationPipe } from '../common/zod.pipe.js';
 import { AuthGuard, AuthedRequest, PermissionsGuard, RequirePermission } from '../auth/guards.js';
@@ -254,17 +254,118 @@ export class ContractsController {
   @RequirePermission('contracts:write')
   async close(@Param('id', ParseUUIDPipe) id: string, @Req() req: AuthedRequest) {
     return withTenant(req.ctx!.agencyId, async (tx) => {
-      const contract = await loadContract(tx, req.ctx!.agencyId, id);
+      const contractRows = await tx.select().from(contracts)
+        .where(and(eq(contracts.id, id), eq(contracts.agencyId, req.ctx!.agencyId)))
+        .for('update').limit(1);
+      const contract = contractRows[0];
+      if (!contract) throw new NotFoundException('Contrat introuvable');
       if (contract.status !== 'ACTIVE' && contract.status !== 'AMENDED') throw new ForbiddenException('Contrat non actif');
-      const updated = await tx.update(contracts).set({ status: 'CLOSED', updatedAt: new Date() }).where(eq(contracts.id, id)).returning();
-      if (contract.reservationId) {
-        await tx.update(reservations).set({ status: 'COMPLETED', updatedAt: new Date() })
-          .where(eq(reservations.id, contract.reservationId));
+      if (!contract.reservationId) throw new ConflictException({ error: { code: 'RETURN_FLOW_INCOMPLETE', message: 'Une réservation est requise pour clôturer le contrat' } });
+      if (!contract.vehicleId) throw new ConflictException({ error: { code: 'RETURN_FLOW_INCOMPLETE', message: 'Un véhicule est requis pour clôturer le contrat' } });
+
+      const reservation = (await tx.select().from(reservations)
+        .where(and(eq(reservations.id, contract.reservationId), eq(reservations.agencyId, req.ctx!.agencyId))).limit(1))[0];
+      if (!reservation) throw new NotFoundException('Réservation introuvable');
+      if (reservation.vehicleId !== contract.vehicleId) {
+        throw new ConflictException({ error: { code: 'RETURN_VEHICLE_MISMATCH', message: 'Le véhicule du contrat ne correspond plus à la réservation' } });
       }
+
+      const returnInspection = (await tx.select().from(inspections)
+        .where(and(
+          eq(inspections.agencyId, req.ctx!.agencyId),
+          eq(inspections.contractId, contract.id),
+          eq(inspections.reservationId, reservation.id),
+          eq(inspections.vehicleId, contract.vehicleId),
+          eq(inspections.kind, 'RETURN'),
+        )).orderBy(desc(inspections.submittedAt)).limit(1))[0];
+      if (!returnInspection) {
+        throw new ConflictException({
+          error: { code: 'RETURN_INSPECTION_REQUIRED', message: 'Inspection retour obligatoire avant clôture' },
+        });
+      }
+
+      const vehicle = (await tx.select().from(vehicles)
+        .where(and(eq(vehicles.id, contract.vehicleId), eq(vehicles.agencyId, req.ctx!.agencyId)))
+        .for('update').limit(1))[0];
+      if (!vehicle) throw new NotFoundException('Véhicule introuvable');
+      if (['RENTED', 'OVERDUE', 'AWAITING_INSPECTION'].includes(vehicle.operationalStatus)) {
+        throw new ConflictException({
+          error: { code: 'RETURN_INSPECTION_INCOMPLETE', message: 'Inspection retour doit être terminée avant clôture', vehicleStatus: vehicle.operationalStatus },
+        });
+      }
+
+      if (contract.depositId) {
+        const deposit = (await tx.select().from(deposits)
+          .where(and(eq(deposits.id, contract.depositId), eq(deposits.agencyId, req.ctx!.agencyId))).limit(1))[0];
+        if (!deposit) throw new ConflictException({ error: { code: 'DEPOSIT_MISSING', message: 'Caution du contrat introuvable' } });
+        if (!['RELEASED', 'SETTLED'].includes(deposit.status)) {
+          throw new ConflictException({
+            error: { code: 'DEPOSIT_NOT_FINALIZED', message: 'La caution doit être libérée ou soldée avant clôture', depositStatus: deposit.status },
+          });
+        }
+      }
+
+      const content = await loadVersionContent(tx, id, contract.currentVersionId);
+      const totalText = content.pricing?.total;
+      if (totalText == null || !/^\d+(\.\d{1,2})?$/.test(String(totalText))) {
+        throw new ConflictException({ error: { code: 'CONTRACT_PRICING_MISSING', message: 'Montant final du contrat introuvable pour le décompte' } });
+      }
+      const totalCents = BigInt(Math.round(Number(totalText) * 100));
+      const rentalPayments = await tx.select({
+        balance: sql<string>`coalesce(sum(case when ${payments.direction} = 'IN' then ${payments.amount} else -${payments.amount} end), 0)`,
+      }).from(payments).where(and(
+        eq(payments.agencyId, req.ctx!.agencyId),
+        eq(payments.contractId, contract.id),
+        eq(payments.purpose, 'RENTAL'),
+      ));
+      const paidRental = BigInt(rentalPayments[0]?.balance ?? '0');
+      if (paidRental < totalCents) {
+        throw new ConflictException({
+          error: {
+            code: 'CONTRACT_NOT_SETTLED',
+            message: 'Le décompte reste impayé avant clôture',
+            requiredCents: totalCents.toString(),
+            paidCents: paidRental.toString(),
+            outstandingCents: (totalCents - paidRental).toString(),
+          },
+        });
+      }
+
+      const unresolvedDamages = await tx.select({ id: damages.id, zoneCode: damages.zoneCode })
+        .from(damages)
+        .where(and(
+          eq(damages.agencyId, req.ctx!.agencyId),
+          eq(damages.vehicleId, contract.vehicleId),
+          eq(damages.discoveredInspectionId, returnInspection.id),
+          eq(damages.preexisting, false),
+          eq(damages.resolution, 'NONE'),
+        ));
+      if (unresolvedDamages.length > 0) {
+        throw new ConflictException({
+          error: {
+            code: 'DAMAGE_NOT_RESOLVED',
+            message: 'Des dommages découverts au retour ne sont pas encore résolus',
+            damageIds: unresolvedDamages.map((d) => d.id),
+            zones: unresolvedDamages.map((d) => d.zoneCode),
+          },
+        });
+      }
+
+      const updated = await tx.update(contracts).set({ status: 'CLOSED', updatedAt: new Date() })
+        .where(eq(contracts.id, id)).returning();
+      await tx.update(reservations).set({ status: 'COMPLETED', updatedAt: new Date() })
+        .where(and(eq(reservations.id, reservation.id), eq(reservations.agencyId, req.ctx!.agencyId)));
+
       await audit(tx, {
         agencyId: req.ctx!.agencyId, actor: { id: req.ctx!.userId, name: req.ctx!.fullName },
         entityType: 'contract', entityId: id, action: 'CONTRACT_CLOSED',
-        before: { status: contract.status }, after: { status: 'CLOSED' },
+        before: { status: contract.status },
+        after: { status: 'CLOSED', vehicleStatus: vehicle.operationalStatus, settlement: 'SETTLED' },
+      });
+      await appendEvent(tx, req.ctx!.agencyId, 'ContractClosed', {
+        contractId: id, number: String(contract.number), reservationId: reservation.id,
+        vehicleId: contract.vehicleId, vehicleStatus: vehicle.operationalStatus,
+        returnInspectionId: returnInspection.id,
       });
       return updated[0];
     });
