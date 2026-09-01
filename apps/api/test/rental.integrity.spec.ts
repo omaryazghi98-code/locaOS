@@ -4,7 +4,6 @@ import type { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import pg from 'pg';
 import { hash } from '@node-rs/argon2';
-import { AppModule } from '../dist/app.module.js';
 import { ROLE_MATRIX } from '@locaos/domain';
 
 process.env.DATABASE_URL ??= 'postgresql://locaos:locaos@127.0.0.1:5432/locaos_test';
@@ -72,6 +71,49 @@ const period = (daysFromNow: number, lengthDays: number) => ({
   pickupAt: new Date(Date.now() + daysFromNow * 86_400_000).toISOString(),
   returnAt: new Date(Date.now() + (daysFromNow + lengthDays) * 86_400_000).toISOString(),
 });
+
+async function createCloseFixture(options: { returnInspection?: boolean; paid?: boolean; depositStatus?: 'RELEASED' | 'SETTLED'; unresolvedDamage?: boolean } = {}) {
+  const p = period(70, 2);
+  const freshVehicle = (await seedClient.query(`insert into vehicles (agency_id, category_id, model_id, plate, vin, current_branch_id) values ('${F.id}','${F.categoryId}',(select id from vehicle_models where agency_id='${F.id}' limit 1),'IA-CLOSE-${Date.now().toString(36).slice(-7)}','IA-VIN-CLOSE-${Date.now().toString(36)}','${F.branchId}') returning id`)).rows[0].id as string;
+  const reservation = await api().post('/api/reservations').set('cookie', F.ownerCookie).send({
+    customerId: F.customerId, categoryId: F.categoryId, vehicleId: freshVehicle,
+    branchOutId: F.branchId, branchInId: F.branchId, ...p, dailyRate: '300',
+  });
+  expect(reservation.status).toBe(201);
+  const generated = await api().post('/api/contracts/from-reservation').set('cookie', F.ownerCookie)
+    .send({ reservationId: reservation.body.reservation.id, language: 'fr' });
+  expect(generated.status).toBe(201);
+  const contractId = generated.body.contract.id as string;
+  const signed = await api().post(`/api/contracts/${contractId}/sign`).set('cookie', F.ownerCookie)
+    .send({ customerName: 'Test Customer', gpsConsent: true });
+  expect(signed.status).toBe(201);
+
+  await seedClient.query(`update contracts set status='ACTIVE' where id='${contractId}'`);
+  await seedClient.query(`update reservations set status='IN_PROGRESS' where id='${reservation.body.reservation.id}'`);
+  await seedClient.query(`update vehicles set operational_status='${options.returnInspection === false ? 'RENTED' : 'INSPECTED'}' where id='${freshVehicle}'`);
+
+  let returnInspectionId: string | null = null;
+  if (options.returnInspection !== false) {
+    returnInspectionId = (await seedClient.query(`insert into inspections (agency_id, client_uuid, kind, contract_id, reservation_id, vehicle_id, customer_id, customer_ack)
+      values ('${F.id}','${crypto.randomUUID()}','RETURN','${contractId}','${reservation.body.reservation.id}','${freshVehicle}','${F.customerId}',true) returning id`)).rows[0].id as string;
+  }
+
+  const depositId = (await seedClient.query(`insert into deposits (agency_id, contract_id, amount, method, status, held_by)
+    values ('${F.id}','${contractId}',400000,'CASH_HELD','${options.depositStatus ?? 'RELEASED'}',(select id from users where email like 'owner-%@integrity-a.test' order by created_at desc limit 1)) returning id`)).rows[0].id as string;
+  await seedClient.query(`update contracts set deposit_id='${depositId}' where id='${contractId}'`);
+
+  if (options.paid !== false) {
+    await seedClient.query(`insert into payments (agency_id, direction, method, purpose, amount, currency, mad_equivalent, contract_id, received_by)
+      values ('${F.id}','IN','CASH','RENTAL',60000,'MAD',60000,'${contractId}',(select id from users where email like 'owner-%@integrity-a.test' order by created_at desc limit 1))`);
+  }
+
+  if (options.unresolvedDamage && returnInspectionId) {
+    await seedClient.query(`insert into damages (agency_id, vehicle_id, discovered_inspection_id, preexisting, zone_code, severity, description, resolution)
+      values ('${F.id}','${freshVehicle}','${returnInspectionId}',false,'FRONT_BUMPER','MINOR','Bumper scratch','NONE')`);
+  }
+
+  return { contractId, reservationId: reservation.body.reservation.id as string, vehicleId: freshVehicle };
+}
 
 let F: Fixture;
 
@@ -232,5 +274,66 @@ describe('rental integrity — deposit idempotency', () => {
 
     const count = await seedClient.query(`select count(*)::int as n from deposits where contract_id='${generated.body.contract.id}' and status in ('PLANNED','HELD','PRE_AUTHORIZED','PARTIALLY_CHARGED')`);
     expect(count.rows[0].n).toBe(1);
+  });
+});
+
+describe('rental integrity — return settlement and closure', () => {
+  it('rejects close when the return inspection is missing', async () => {
+    const f = await createCloseFixture({ returnInspection: false });
+    const res = await api().post(`/api/contracts/${f.contractId}/close`).set('cookie', F.ownerCookie);
+    expect(res.status).toBe(409);
+    expect(res.body.error.code).toBe('RETURN_INSPECTION_REQUIRED');
+  });
+
+  it('rejects close when the return inspection has not been completed', async () => {
+    const f = await createCloseFixture({ returnInspection: false, paid: true });
+    await seedClient.query(`insert into inspections (agency_id, client_uuid, kind, contract_id, reservation_id, vehicle_id, customer_id, customer_ack)
+      values ('${F.id}','${crypto.randomUUID()}','RETURN','${f.contractId}','${f.reservationId}','${f.vehicleId}','${F.customerId}',true)`);
+    await seedClient.query(`update vehicles set operational_status='RENTED' where id='${f.vehicleId}'`);
+    const res = await api().post(`/api/contracts/${f.contractId}/close`).set('cookie', F.ownerCookie);
+    expect(res.status).toBe(409);
+    expect(res.body.error.code).toBe('RETURN_INSPECTION_INCOMPLETE');
+  });
+
+  it('rejects close when the rental balance remains unpaid', async () => {
+    const f = await createCloseFixture({ paid: false });
+    const res = await api().post(`/api/contracts/${f.contractId}/close`).set('cookie', F.ownerCookie);
+    expect(res.status).toBe(409);
+    expect(res.body.error.code).toBe('CONTRACT_NOT_SETTLED');
+    expect(res.body.error.outstandingCents).toBe('60000');
+  });
+
+  it('rejects close while the deposit is still active', async () => {
+    const f = await createCloseFixture({ depositStatus: 'SETTLED', paid: true });
+    await seedClient.query(`update deposits set status='HELD' where contract_id='${f.contractId}'`);
+    const res = await api().post(`/api/contracts/${f.contractId}/close`).set('cookie', F.ownerCookie);
+    expect(res.status).toBe(409);
+    expect(res.body.error.code).toBe('DEPOSIT_NOT_FINALIZED');
+  });
+
+  it('rejects close while return damage remains unresolved', async () => {
+    const f = await createCloseFixture({ unresolvedDamage: true });
+    const res = await api().post(`/api/contracts/${f.contractId}/close`).set('cookie', F.ownerCookie);
+    expect(res.status).toBe(409);
+    expect(res.body.error.code).toBe('DAMAGE_NOT_RESOLVED');
+  });
+
+  it('closes a fully settled rental without silently making the vehicle available', async () => {
+    const f = await createCloseFixture({ paid: true, depositStatus: 'RELEASED' });
+    const res = await api().post(`/api/contracts/${f.contractId}/close`).set('cookie', F.ownerCookie);
+    expect(res.status).toBe(201);
+
+    const state = await seedClient.query(`
+      select c.status as contract_status, r.status as reservation_status, v.operational_status
+      from contracts c
+      join reservations r on r.id = c.reservation_id
+      join vehicles v on v.id = c.vehicle_id
+      where c.id='${f.contractId}'
+    `);
+    expect(state.rows[0]).toEqual({
+      contract_status: 'CLOSED',
+      reservation_status: 'COMPLETED',
+      operational_status: 'INSPECTED',
+    });
   });
 });
