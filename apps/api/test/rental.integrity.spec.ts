@@ -3,6 +3,7 @@ import { NestFactory } from '@nestjs/core';
 import type { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import pg from 'pg';
+import { AppModule } from '../dist/app.module.js';
 import { hash } from '@node-rs/argon2';
 import { ROLE_MATRIX } from '@locaos/domain';
 
