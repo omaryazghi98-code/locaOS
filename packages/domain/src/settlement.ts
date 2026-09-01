@@ -57,6 +57,7 @@ export type SettlementResult = {
   grossTotal: bigint;
   incomingPayments: bigint;
   outgoingPayments: bigint;
+  netPayments: bigint;
   depositHeld: bigint;
   depositApplied: bigint;
   depositRefund: bigint;
@@ -105,11 +106,13 @@ export function calculateSettlement(input: SettlementInput): SettlementResult {
     const amount = normalizedPaymentAmount(payment);
     return payment.direction === 'OUT' ? sum + amount : sum;
   }, 0n);
+  const netPayments = incomingPayments - outgoingPayments;
+  const availableCredit = Math.max(0n, netPayments) + depositApplied;
 
-  const paidAgainstCharges = Math.min(grossTotal, incomingPayments + depositApplied);
+  const paidAgainstCharges = Math.min(grossTotal, availableCredit);
   const balanceDue = grossTotal - paidAgainstCharges;
-  const overpayment = Math.max(0n, incomingPayments + depositApplied - grossTotal);
-  const customerRefund = depositRefund + overpayment + outgoingPayments;
+  const overpayment = Math.max(0n, availableCredit - grossTotal);
+  const customerRefund = Math.max(0n, depositRefund + overpayment);
 
   return {
     currency: input.currency,
@@ -119,6 +122,7 @@ export function calculateSettlement(input: SettlementInput): SettlementResult {
     grossTotal,
     incomingPayments,
     outgoingPayments,
+    netPayments,
     depositHeld,
     depositApplied,
     depositRefund,
