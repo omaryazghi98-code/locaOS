@@ -57,6 +57,24 @@ describe('calculateSettlement', () => {
     expect(result.customerRefund).toBe(100_000n);
   });
 
+  it('does not double-count a deposit application payment', () => {
+    const result = calculateSettlement({
+      currency: 'MAD',
+      lines: [line('RENTAL', 100_000n), line('DAMAGE', 40_000n)],
+      payments: [
+        { id: 'rent', amount: 100_000n, direction: 'IN', currency: 'MAD' },
+        { id: 'deposit-charge', amount: 40_000n, direction: 'IN', currency: 'MAD', purpose: 'DAMAGE', countsTowardCharges: false },
+      ],
+      deposit: { id: 'd1', heldAmount: 40_000n, chargedAmount: 40_000n, releasedAmount: 0n },
+    });
+
+    expect(result.incomingPayments).toBe(100_000n);
+    expect(result.depositApplied).toBe(40_000n);
+    expect(result.paidAgainstCharges).toBe(140_000n);
+    expect(result.balanceDue).toBe(0n);
+    expect(result.overpayment).toBe(0n);
+  });
+
   it('handles underpayment, overpayment and an existing refund', () => {
     const underpaid = calculateSettlement({
       currency: 'MAD',
