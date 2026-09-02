@@ -7,6 +7,7 @@ import { FleetController } from './modules/fleet/fleet.controller.js';
 import { CustomersController } from './modules/customers/customers.controller.js';
 import { ReservationsController } from './modules/reservations/reservations.controller.js';
 import { ContractsController } from './modules/contracts/contracts.controller.js';
+import { SettlementCloseController } from './modules/settlement/settlement-close.controller.js';
 import { InspectionsController } from './modules/inspections/inspections.controller.js';
 import { FinanceController } from './modules/finance/finance.controller.js';
 import { OpsController } from './modules/ops/ops.controller.js';
@@ -24,7 +25,7 @@ import {
 @Module({
   controllers: [
     AuthController, FleetController, CustomersController, ReservationsController,
-    ContractsController, InspectionsController, FinanceController, OpsController, FocusController, SettlementController,
+    SettlementCloseController, ContractsController, InspectionsController, FinanceController, OpsController, FocusController, SettlementController,
     AlertsController, FilesController, MaintenanceController, TelematicsController,
     TransfersController, IntelligenceOpsController, ReportsController, Customer360Controller,
     DocumentsController, IntegrationsController, ComplianceController,
