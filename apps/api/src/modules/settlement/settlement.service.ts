@@ -1,4 +1,4 @@
-import { and, eq, inArray } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { calculateSettlement, type ContractContent, type SettlementResult } from '@locaos/domain';
 import { contracts, damages, depositCharges, deposits, inspections, payments } from '../../db/schema.js';
 import type { Tx } from '../../db/client.js';
@@ -24,6 +24,7 @@ export async function assembleContractSettlement(
   content: ContractContent,
 ): Promise<SettlementAssembly> {
   if (!contract.currentVersionId) throw new SettlementAssemblyError('Le contrat ne possède pas de version courante');
+  if (!contract.vehicleId) throw new SettlementAssemblyError('Le contrat ne possède pas de véhicule');
 
   const returnInspections = await tx.select().from(inspections)
     .where(and(
@@ -47,7 +48,7 @@ export async function assembleContractSettlement(
   const returnDamages = await tx.select().from(damages)
     .where(and(
       eq(damages.agencyId, agencyId),
-      eq(damages.vehicleId, contract.vehicleId!),
+      eq(damages.vehicleId, contract.vehicleId),
       eq(damages.discoveredInspectionId, returnInspection.id),
     ));
   const unresolvedDamageIds = returnDamages
@@ -92,6 +93,7 @@ export async function assembleContractSettlement(
     };
   });
 
+  const chargedAmount = charges.reduce((sum, charge) => sum + charge.amount, 0n);
   const settlement = calculateSettlement({
     currency: content.pricing.currency,
     lines: [...pricingLines, ...damageLines],
@@ -99,9 +101,9 @@ export async function assembleContractSettlement(
     deposit: deposit ? {
       id: deposit.id,
       heldAmount: deposit.amount,
-      chargedAmount: charges.reduce((sum, charge) => sum + charge.amount, 0n),
+      chargedAmount,
       releasedAmount: ['RELEASED', 'SETTLED'].includes(deposit.status)
-        ? deposit.amount - charges.reduce((sum, charge) => sum + charge.amount, 0n)
+        ? deposit.amount - chargedAmount
         : undefined,
     } : null,
   });
