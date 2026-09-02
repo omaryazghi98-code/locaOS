@@ -87,7 +87,7 @@ export function calculateSettlement(input: SettlementInput): SettlementResult {
   if (grossTotal < 0n) throw new SettlementError('Settlement total cannot be negative');
 
   const depositHeld = input.deposit?.heldAmount ?? 0n;
-  const depositApplied = Math.min(input.deposit?.chargedAmount ?? 0n, grossTotal, depositHeld);
+  const depositApplied = minBigInt(input.deposit?.chargedAmount ?? 0n, grossTotal, depositHeld);
   const depositRemaining = depositHeld - depositApplied;
   const derivedDepositRefund = depositRemaining;
   const depositRefund = input.deposit?.releasedAmount == null
@@ -107,12 +107,12 @@ export function calculateSettlement(input: SettlementInput): SettlementResult {
     return payment.direction === 'OUT' ? sum + amount : sum;
   }, 0n);
   const netPayments = incomingPayments - outgoingPayments;
-  const availableCredit = Math.max(0n, netPayments) + depositApplied;
+  const availableCredit = maxBigInt(0n, netPayments) + depositApplied;
 
-  const paidAgainstCharges = Math.min(grossTotal, availableCredit);
+  const paidAgainstCharges = minBigInt(grossTotal, availableCredit);
   const balanceDue = grossTotal - paidAgainstCharges;
-  const overpayment = Math.max(0n, availableCredit - grossTotal);
-  const customerRefund = Math.max(0n, depositRefund + overpayment);
+  const overpayment = maxBigInt(0n, availableCredit - grossTotal);
+  const customerRefund = maxBigInt(0n, depositRefund + overpayment);
 
   return {
     currency: input.currency,
@@ -140,6 +140,14 @@ function normalizedPaymentAmount(payment: SettlementPayment): bigint {
   const amount = payment.settlementAmount ?? payment.amount;
   assertNonNegative(`payment.${payment.id}.amount`, amount);
   return amount;
+}
+
+function minBigInt(...values: bigint[]): bigint {
+  return values.reduce((min, value) => value < min ? value : min);
+}
+
+function maxBigInt(a: bigint, b: bigint): bigint {
+  return a > b ? a : b;
 }
 
 function assertNonNegative(field: string, amount: bigint): void {
