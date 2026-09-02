@@ -52,7 +52,7 @@ export async function assembleContractSettlement(
       eq(damages.discoveredInspectionId, returnInspection.id),
     ));
   const unresolvedDamageIds = returnDamages
-    .filter((damage) => !damage.preexisting && damage.resolution === 'NONE' && !damage.chargePaymentId)
+    .filter((damage) => !damage.preexisting && damage.resolution === 'NONE')
     .map((damage) => damage.id);
 
   const pricingLines = content.pricing.lines.map((line) => ({
