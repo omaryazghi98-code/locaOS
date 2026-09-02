@@ -6,6 +6,7 @@ export * from './reservation.js';
 export * from './pricing.js';
 export * from './contract.js';
 export * from './contractPricing.js';
+export * from './settlement.js';
 export * from './alerts.js';
 export * from './permissions.js';
 export * from './labels.js';
