@@ -49,6 +49,24 @@ const QuoteLineSnapshot = z.object({
   total: optionalEmpty,
 });
 
+const SettlementSnapshot = z.object({
+  capturedAt: z.string(),
+  currency: z.string(),
+  charges: z.string(),
+  discounts: z.string(),
+  grossTotal: z.string(),
+  incomingPayments: z.string(),
+  outgoingPayments: z.string(),
+  netPayments: z.string(),
+  depositHeld: z.string(),
+  depositApplied: z.string(),
+  depositRefund: z.string(),
+  paidAgainstCharges: z.string(),
+  balanceDue: z.string(),
+  overpayment: z.string(),
+  customerRefund: z.string(),
+}).nullable().default(null);
+
 export const ContractContent = z.object({
   header: z.object({
     agencyName: z.string(),
@@ -79,6 +97,7 @@ export const ContractContent = z.object({
     subtotal: optionalEmpty, dailyRate: empty, days: empty, discount: empty, total: empty, currency: z.string().default('MAD'),
   }),
   deposit: z.object({ amount: empty, method: empty, status: optionalEmpty, heldAt: empty }),
+  settlement: SettlementSnapshot,
   insurance: InsuranceBlock,
   crossBorder: CrossBorderBlock,
   mileageFuel: z.object({
@@ -120,6 +139,7 @@ export function blankContractContent(args: {
     period: { pickupAt: b(), returnAt: b(), days: b(), pickupBranch: b(), returnBranch: b() },
     pricing: { lines: [], subtotal: b(), dailyRate: b(), days: b(), discount: b(), total: b(), currency: 'MAD' },
     deposit: { amount: b(), method: b(), status: b(), heldAt: b() },
+    settlement: null,
     insurance: { franchiseAmount: null, cdw: null, superCdw: null, exclusions: null },
     crossBorder: { authorized: null, zones: null, admissionTemporaireRef: b() },
     mileageFuel: { mileageOut: b(), mileageIn: b(), fuelOut: b(), fuelIn: b(), extraKmRate: b(), includedKmPerDay: b() },
