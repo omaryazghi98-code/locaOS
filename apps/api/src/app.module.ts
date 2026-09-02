@@ -11,6 +11,7 @@ import { InspectionsController } from './modules/inspections/inspections.control
 import { FinanceController } from './modules/finance/finance.controller.js';
 import { OpsController } from './modules/ops/ops.controller.js';
 import { FocusController } from './modules/ops/focus.controller.js';
+import { SettlementController } from './modules/settlement/settlement.controller.js';
 import { AlertsController } from './modules/alerts/alerts.controller.js';
 import { FilesController } from './modules/files/files.controller.js';
 import { MaintenanceController } from './modules/maintenance/maintenance.controller.js';
@@ -23,7 +24,7 @@ import {
 @Module({
   controllers: [
     AuthController, FleetController, CustomersController, ReservationsController,
-    ContractsController, InspectionsController, FinanceController, OpsController, FocusController,
+    ContractsController, InspectionsController, FinanceController, OpsController, FocusController, SettlementController,
     AlertsController, FilesController, MaintenanceController, TelematicsController,
     TransfersController, IntelligenceOpsController, ReportsController, Customer360Controller,
     DocumentsController, IntegrationsController, ComplianceController,
