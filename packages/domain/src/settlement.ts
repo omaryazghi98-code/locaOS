@@ -77,8 +77,13 @@ export type SettlementResult = {
  * holding a deposit is not revenue and must not inflate the amount paid for rent.
  */
 export function calculateSettlement(input: SettlementInput): SettlementResult {
-  assertNonNegative('deposit.heldAmount', input.deposit?.heldAmount ?? 0n);
-  assertNonNegative('deposit.chargedAmount', input.deposit?.chargedAmount ?? 0n);
+  const depositHeld = input.deposit?.heldAmount ?? 0n;
+  const requestedDepositCharge = input.deposit?.chargedAmount ?? 0n;
+  assertNonNegative('deposit.heldAmount', depositHeld);
+  assertNonNegative('deposit.chargedAmount', requestedDepositCharge);
+  if (requestedDepositCharge > depositHeld) {
+    throw new SettlementError('Deposit charge exceeds held deposit');
+  }
 
   const lines = input.lines.map((line) => ({ ...line }));
   const positiveCharges = lines.reduce((sum, line) => line.amount > 0n ? sum + line.amount : sum, 0n);
@@ -86,8 +91,7 @@ export function calculateSettlement(input: SettlementInput): SettlementResult {
   const grossTotal = positiveCharges - discounts;
   if (grossTotal < 0n) throw new SettlementError('Settlement total cannot be negative');
 
-  const depositHeld = input.deposit?.heldAmount ?? 0n;
-  const depositApplied = minBigInt(input.deposit?.chargedAmount ?? 0n, grossTotal, depositHeld);
+  const depositApplied = minBigInt(requestedDepositCharge, grossTotal, depositHeld);
   const depositRemaining = depositHeld - depositApplied;
   const derivedDepositRefund = depositRemaining;
   const depositRefund = input.deposit?.releasedAmount == null
