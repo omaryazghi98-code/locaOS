@@ -31,6 +31,8 @@ export type SettlementPayment = {
   settlementAmount?: bigint;
   purpose?: string | null;
   reversesPaymentId?: string | null;
+  /** Deposit applications are represented separately by depositApplied and must not be counted as cash twice. */
+  countsTowardCharges?: boolean;
 };
 
 export type SettlementDeposit = {
@@ -74,7 +76,8 @@ export type SettlementResult = {
  * is the single arithmetic source of truth for close-time settlement.
  *
  * Deposit application is deliberately separated from ordinary payments:
- * holding a deposit is not revenue and must not inflate the amount paid for rent.
+ * holding a deposit is not revenue and a deposit application must not be counted
+ * once as a payment and again as a deposit credit.
  */
 export function calculateSettlement(input: SettlementInput): SettlementResult {
   const depositHeld = input.deposit?.heldAmount ?? 0n;
@@ -102,11 +105,12 @@ export function calculateSettlement(input: SettlementInput): SettlementResult {
     throw new SettlementError('Deposit application and release exceed held deposit');
   }
 
-  const incomingPayments = input.payments.reduce((sum, payment) => {
+  const countedPayments = input.payments.filter((payment) => payment.countsTowardCharges !== false);
+  const incomingPayments = countedPayments.reduce((sum, payment) => {
     const amount = normalizedPaymentAmount(payment);
     return payment.direction === 'IN' ? sum + amount : sum;
   }, 0n);
-  const outgoingPayments = input.payments.reduce((sum, payment) => {
+  const outgoingPayments = countedPayments.reduce((sum, payment) => {
     const amount = normalizedPaymentAmount(payment);
     return payment.direction === 'OUT' ? sum + amount : sum;
   }, 0n);
