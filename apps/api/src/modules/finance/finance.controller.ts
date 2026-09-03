@@ -9,6 +9,7 @@ import { AuthGuard, AuthedRequest, PermissionsGuard, RequirePermission } from '.
 import { audit } from '../audit/audit.service.js';
 import { appendEvent, dispatchPendingSafe } from '../events/events.js';
 import { assertDepositCoversRequiredAmount, assertDepositChargeWithinRemainingAmount } from './deposit.logic.js';
+import { assertDepositHandlingInput, resolveDepositCustody, type DepositHandling } from './deposit.policy.js';
 
 const PaymentSchema = z.object({
   direction: z.enum(['IN', 'OUT']).default('IN'),
@@ -29,7 +30,9 @@ const RefundSchema = PaymentSchema.omit({ method: true, direction: true }).exten
 const DepositSchema = z.object({
   contractId: z.string().uuid(),
   amount: z.string().regex(/^\d+(\.\d{1,2})?$/),
-  method: z.enum(['CASH_HELD', 'CARD_PREAUTH', 'BANK']),
+  method: z.enum(['CASH_HELD', 'CARD_PREAUTH', 'BANK', 'PARTNER', 'PAYMENT_PROVIDER']),
+  handling: z.enum(['DIRECT', 'PARTNER', 'CARD_PREAUTH']).default('DIRECT'),
+  provider: z.string().trim().min(1).max(80).optional(),
   providerRef: z.string().max(80).optional(),
   preauthExpiresAt: z.string().datetime().optional(),
 });
@@ -171,6 +174,16 @@ export class FinanceController {
       }
       const amount = cents(body.amount);
       assertDepositCoversRequiredAmount(amount, requiredDeposit);
+      assertDepositHandlingInput(body.handling as DepositHandling, body.provider);
+      if (body.handling === 'CARD_PREAUTH' && body.method !== 'CARD_PREAUTH') {
+        throw new BadRequestException('Une gestion par pré-autorisation exige la méthode CARD_PREAUTH');
+      }
+      if (body.handling === 'PARTNER' && !['PARTNER', 'PAYMENT_PROVIDER'].includes(body.method)) {
+        throw new BadRequestException('Une caution partenaire exige une méthode partenaire ou prestataire');
+      }
+      if (body.handling === 'DIRECT' && body.method === 'PARTNER') {
+        throw new BadRequestException('La méthode PARTNER exige une gestion PARTNER');
+      }
 
       const existing = await tx.select().from(deposits)
         .where(and(eq(deposits.contractId, body.contractId), inArray(deposits.status, ['PLANNED', 'HELD', 'PRE_AUTHORIZED', 'PARTIALLY_CHARGED'])))
@@ -183,22 +196,25 @@ export class FinanceController {
 
       const inserted = await tx.insert(deposits).values({
         agencyId: req.ctx!.agencyId, contractId: body.contractId, amount,
-        method: body.method, provider: body.method === 'CARD_PREAUTH' ? 'CMI_PLBS (saisie manuelle)' : null,
+        method: body.method as never,
+        provider: body.provider ?? (body.method === 'CARD_PREAUTH' ? 'CMI_PLBS (saisie manuelle)' : null),
         providerRef: body.providerRef ?? null,
         preauthExpiresAt: body.preauthExpiresAt ? new Date(body.preauthExpiresAt) : null,
-        status: body.method === 'CARD_PREAUTH' ? 'PRE_AUTHORIZED' : 'PLANNED',
+        status: body.handling === 'CARD_PREAUTH' ? 'PRE_AUTHORIZED' : 'PLANNED',
         heldBy: req.ctx!.userId,
       }).returning();
-      if (body.method !== 'CARD_PREAUTH') {
+      const custody = resolveDepositCustody(body.handling as DepositHandling);
+      await tx.execute(sql`update deposits set handling = ${body.handling}, custody = ${custody} where id = ${inserted[0]!.id} and agency_id = ${req.ctx!.agencyId}`);
+      if (body.handling !== 'CARD_PREAUTH') {
         await tx.update(deposits).set({ status: 'HELD' }).where(eq(deposits.id, inserted[0]!.id));
       }
       await tx.update(contracts).set({ depositId: inserted[0]!.id, updatedAt: new Date() }).where(eq(contracts.id, body.contractId));
       await audit(tx, {
         agencyId: req.ctx!.agencyId, actor: { id: req.ctx!.userId, name: req.ctx!.fullName },
         entityType: 'deposit', entityId: inserted[0]!.id, action: 'DEPOSIT_CREATED',
-        after: { amount: body.amount, method: body.method, requiredDeposit: (requiredDeposit / 100n).toString() },
+        after: { amount: body.amount, method: body.method, handling: body.handling, custody, provider: body.provider ?? null, requiredDeposit: (requiredDeposit / 100n).toString() },
       });
-      return { ...inserted[0], status: body.method === 'CARD_PREAUTH' ? 'PRE_AUTHORIZED' : 'HELD' };
+      return { ...inserted[0], handling: body.handling, custody, provider: body.provider ?? inserted[0]!.provider, status: body.handling === 'CARD_PREAUTH' ? 'PRE_AUTHORIZED' : 'HELD' };
     });
   }
 
