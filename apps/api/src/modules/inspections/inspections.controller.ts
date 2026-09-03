@@ -48,10 +48,21 @@ export class InspectionsController {
       if (existing[0]) return { inspection: existing[0], duplicate: true };
 
       let resolvedContractId = body.contractId ?? null;
+      let linkedReservation: typeof reservations.$inferSelect | null = null;
+      let linkedContract: typeof contracts.$inferSelect | null = null;
+
       if (body.reservationId) {
         const reservation = await tx.select().from(reservations)
           .where(and(eq(reservations.id, body.reservationId), eq(reservations.agencyId, req.ctx!.agencyId))).limit(1);
         if (!reservation[0]) throw new NotFoundException('Réservation introuvable');
+        linkedReservation = reservation[0];
+
+        if (!linkedReservation.vehicleId) {
+          throw new ForbiddenException('La réservation doit avoir un véhicule affecté avant inspection');
+        }
+        if (linkedReservation.vehicleId !== body.vehicleId) {
+          throw new ForbiddenException('Le véhicule de l’inspection ne correspond pas à la réservation');
+        }
 
         const linkedContracts = await tx.select().from(contracts)
           .where(and(
@@ -63,9 +74,38 @@ export class InspectionsController {
         if (body.contractId) {
           const explicit = linkedContracts.find((c) => c.id === body.contractId);
           if (!explicit) throw new ForbiddenException('Le contrat fourni ne correspond pas à la réservation');
+          linkedContract = explicit;
         } else {
           resolvedContractId = linkedContracts[0]?.id ?? null;
+          linkedContract = linkedContracts[0] ?? null;
         }
+      }
+
+      if (body.contractId && !linkedContract) {
+        const contract = await tx.select().from(contracts)
+          .where(and(eq(contracts.id, body.contractId), eq(contracts.agencyId, req.ctx!.agencyId))).limit(1);
+        if (!contract[0]) throw new NotFoundException('Contrat introuvable');
+        if (!['DRAFT', 'SIGNED', 'ACTIVE', 'AMENDED'].includes(contract[0].status)) {
+          throw new ForbiddenException('Le contrat n’est pas dans un état permettant une inspection');
+        }
+        linkedContract = contract[0];
+        if (contract[0].vehicleId !== body.vehicleId) {
+          throw new ForbiddenException('Le véhicule de l’inspection ne correspond pas au contrat');
+        }
+        if (body.reservationId && contract[0].reservationId !== body.reservationId) {
+          throw new ForbiddenException('Le contrat ne correspond pas à la réservation');
+        }
+        resolvedContractId = contract[0].id;
+      }
+
+      if (linkedContract && linkedContract.vehicleId !== body.vehicleId) {
+        throw new ForbiddenException('Le véhicule de l’inspection ne correspond pas au contrat');
+      }
+      if (linkedContract?.reservationId && linkedReservation && linkedContract.reservationId !== linkedReservation.id) {
+        throw new ForbiddenException('Le contrat et la réservation de l’inspection ne correspondent pas');
+      }
+      if (linkedReservation && linkedContract?.reservationId !== linkedReservation.id) {
+        throw new ForbiddenException('Le contrat lié ne correspond pas à la réservation');
       }
 
       const durationSeconds = body.startedAt
@@ -187,6 +227,27 @@ export class InspectionsController {
       const insp = rows[0];
       if (!insp) throw new NotFoundException('Inspection introuvable');
       if (insp.kind !== 'RETURN') throw new ForbiddenException('Inspection retour uniquement');
+
+      if (insp.reservationId) {
+        const reservation = await tx.select().from(reservations)
+          .where(and(eq(reservations.id, insp.reservationId), eq(reservations.agencyId, req.ctx!.agencyId))).limit(1);
+        if (!reservation[0]) throw new NotFoundException('Réservation introuvable');
+        if (!reservation[0].vehicleId || reservation[0].vehicleId !== insp.vehicleId) {
+          throw new ForbiddenException('Le véhicule de l’inspection ne correspond pas à la réservation');
+        }
+      }
+      if (insp.contractId) {
+        const contract = await tx.select().from(contracts)
+          .where(and(eq(contracts.id, insp.contractId), eq(contracts.agencyId, req.ctx!.agencyId))).limit(1);
+        if (!contract[0]) throw new NotFoundException('Contrat introuvable');
+        if (contract[0].vehicleId !== insp.vehicleId) {
+          throw new ForbiddenException('Le véhicule de l’inspection ne correspond pas au contrat');
+        }
+        if (insp.reservationId && contract[0].reservationId !== insp.reservationId) {
+          throw new ForbiddenException('Le contrat ne correspond pas à la réservation');
+        }
+      }
+
       await transitionVehicle(tx, req.ctx!.agencyId, {
         vehicleId: insp.vehicleId, to: 'INSPECTED',
         actorId: req.ctx!.userId, actorName: req.ctx!.fullName, actorKind: 'INSPECTION_SERVICE',
