@@ -53,20 +53,25 @@ Regression tests must cover invalid and valid closure paths, including unresolve
 - **Deposit integrity was hardened conditionally:** when the reservation quote requires a deposit (`depositRequired > 0`), deposit creation refuses an amount below the required amount; deposit charging locks the deposit row and refuses charges above the remaining secured amount; deposit release requires a contract/reservation/vehicle match plus a completed return-inspection state.
 - The database migration (`0006_deposit_integrity.sql`) enforces the same activation and deposit-charge limits while explicitly allowing activation when the required deposit is zero.
 - Deposit integrity regression coverage exists for insufficient security, valid security, overcharging, zero charges, and exact remaining-capacity charges.
+- **Deposit handling is now provider-agnostic:** `0007_deposit_provider_agnostic.sql` adds first-class handling/custody semantics without making deposits universal. `DIRECT` maps to agency custody, `PARTNER` maps to partner custody, and `CARD_PREAUTH` maps to external custody. `NONE` remains represented by no deposit record when no deposit is required.
+- Deposit provider identity remains free-form rather than hard-coded to a vendor. The deposit rail now also has generic `PARTNER` and `PAYMENT_PROVIDER` enum values so future Wafacash, Fatourati, Stripe, card, bank, cash, or other adapters can be introduced without changing the custody model.
+- The deposit API now accepts `handling`, optional provider/provider reference, and validates the required combinations. Partner and card-preauthorization handling require a provider; custody is derived server-side so partner/external funds cannot accidentally be treated as agency cash.
+- Added unit coverage for deposit custody resolution and provider requirements in `deposit.policy.spec.ts`.
 
 ### Important implementation note
 
 The API activation path still has its pre-existing status-only deposit check, but it is already conditional on `quote.depositRequired > 0`. The database trigger independently rejects an `ACTIVE` transition when a positive required deposit is not sufficiently secured. The next hardening pass should surface that invariant as a stable API error code and add endpoint-level activation tests rather than relying on the database exception boundary.
 
+The provider-agnostic deposit model is deliberately an additive foundation: provider-specific API adapters should later attach to the generic provider/reference fields and financial transaction boundary rather than becoming part of rental lifecycle rules.
+
 ### Verified remaining work before this P0 can be considered complete
 
 1. Add endpoint-level regression tests specifically for mismatched inspection vehicle/contract/reservation combinations.
 2. Add endpoint-level activation regression coverage for insufficient and sufficient deposits, including the valid no-deposit path and stable `DEPOSIT_AMOUNT_INSUFFICIENT` API behavior.
-3. Decide and implement the first-class representation of externally/partner-handled deposits (including provider such as Wafacash) without falsely treating them as agency-held funds.
-4. Add endpoint-level regression coverage for deposit overcharge and release-before-return-inspection.
-5. Finish authoritative final settlement rather than relying on close-time rental-payment comparison alone.
-6. Harden activation concurrency around contract/reservation/vehicle state.
-7. Complete period/price amendment recalculation through the shared money/time pricing helper.
-8. Explicitly model the post-return `INSPECTED → preparation/QC → rentable` lifecycle using the existing vehicle state machine.
+3. Add endpoint-level regression coverage for deposit overcharge and release-before-return-inspection.
+4. Finish authoritative final settlement rather than relying on close-time rental-payment comparison alone.
+5. Harden activation concurrency around contract/reservation/vehicle state.
+6. Complete period/price amendment recalculation through the shared money/time pricing helper.
+7. Explicitly model the post-return `INSPECTED → preparation/QC → rentable` lifecycle using the existing vehicle state machine.
 
 Do not mark the overall rental lifecycle pilot-ready until these invariants and their regression tests are green.
