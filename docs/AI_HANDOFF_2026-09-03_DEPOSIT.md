@@ -71,8 +71,12 @@ Do not turn Wafacash/Fatourati/Stripe/etc. into domain-specific rental states. F
 5. Contract period/price amendment recalculation wiring.
 6. Explicit `INSPECTED → preparation/QC → rentable` vehicle lifecycle.
 
-## Latest branch checkpoint
+## Implementation checkpoint
 
 `8a65573f463d4e03ddc2bc8f1887dd127fabcbe0`
 
-The latest commit also updates `docs/RETURN_SETTLEMENT_LIFECYCLE_P0.md` so future work can continue from the documented state.
+## Handoff document commit
+
+`65bdcaafa01011037a245bf445b7e63ac51baaed`
+
+The branch now includes this handoff document plus the implementation checkpoint, so future work can continue from the documented state without overwriting earlier progress.
