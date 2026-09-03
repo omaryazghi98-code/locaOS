@@ -1,13 +1,14 @@
-import { Body, ConflictException, Controller, ForbiddenException, BadRequestException, Get, NotFoundException, Param, ParseUUIDPipe, Post, Req, Query, UseGuards } from '@nestjs/common';
-import { and, desc, eq, gte, inArray, lt, sql } from 'drizzle-orm';
+import { Body, ConflictException, Controller, ForbiddenException, BadRequestException, Get, NotFoundException, Param, ParseUUIDPipe, Post, Req, UseGuards } from '@nestjs/common';
+import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { toMadEquivalent } from '@locaos/domain';
 import { withTenant } from '../../db/client';
-import { cashSessions, contracts, customers, deposits, depositCharges, inspections, payments, reservations, vehicles } from '../../db/schema';
+import { cashSessions, contracts, customers, deposits, depositCharges, inspections, payments } from '../../db/schema';
 import { ZodValidationPipe } from '../common/zod.pipe.js';
 import { AuthGuard, AuthedRequest, PermissionsGuard, RequirePermission } from '../auth/guards.js';
 import { audit } from '../audit/audit.service.js';
-import { appendEvent, dispatchPending, dispatchPendingSafe } from '../events/events.js';
+import { appendEvent, dispatchPendingSafe } from '../events/events.js';
+import { assertDepositCoversRequiredAmount, assertDepositChargeWithinRemainingAmount } from './deposit.logic.js';
 
 const PaymentSchema = z.object({
   direction: z.enum(['IN', 'OUT']).default('IN'),
@@ -191,14 +192,38 @@ export class FinanceController {
   async release(@Param('id', ParseUUIDPipe) id: string, @Body(new ZodValidationPipe(z.object({ reason: z.string().min(3).max(300) }))) body: { reason: string }, @Req() req: AuthedRequest) {
     const result = await withTenant(req.ctx!.agencyId, async (tx) => {
       const rows = await tx.select().from(deposits)
-        .where(and(eq(deposits.id, id), eq(deposits.agencyId, req.ctx!.agencyId))).limit(1);
+        .where(and(eq(deposits.id, id), eq(deposits.agencyId, req.ctx!.agencyId))).for('update').limit(1);
       if (!rows[0]) throw new NotFoundException('Caution introuvable');
       const d = rows[0];
       if (!['HELD', 'PRE_AUTHORIZED', 'PARTIALLY_CHARGED'].includes(d.status)) throw new ForbiddenException('Statut non libérable');
-      const contract = await tx.select().from(contracts).where(eq(contracts.id, d.contractId)).limit(1);
-      const ret = await tx.select().from(inspections)
-        .where(and(eq(inspections.contractId, d.contractId), eq(inspections.kind, 'RETURN'))).limit(1);
-      const returnInspectionExists = Boolean(ret[0]);
+
+      const contract = (await tx.select().from(contracts)
+        .where(and(eq(contracts.id, d.contractId), eq(contracts.agencyId, req.ctx!.agencyId))).limit(1))[0];
+      if (!contract) throw new NotFoundException('Contrat introuvable');
+      if (!contract.reservationId || !contract.vehicleId) {
+        throw new ConflictException({ error: { code: 'RETURN_FLOW_INCOMPLETE', message: 'Réservation et véhicule requis avant libération de la caution' } });
+      }
+      const reservation = (await tx.select().from(require('../../db/schema').reservations)
+        .where(and(eq(require('../../db/schema').reservations.id, contract.reservationId), eq(require('../../db/schema').reservations.agencyId, req.ctx!.agencyId))).limit(1))[0];
+      if (!reservation || reservation.vehicleId !== contract.vehicleId) {
+        throw new ConflictException({ error: { code: 'RETURN_VEHICLE_MISMATCH', message: 'Le véhicule du contrat ne correspond pas à la réservation' } });
+      }
+      const vehicle = (await tx.select().from(require('../../db/schema').vehicles)
+        .where(and(eq(require('../../db/schema').vehicles.id, contract.vehicleId), eq(require('../../db/schema').vehicles.agencyId, req.ctx!.agencyId))).limit(1))[0];
+      const ret = (await tx.select().from(inspections)
+        .where(and(
+          eq(inspections.agencyId, req.ctx!.agencyId),
+          eq(inspections.contractId, d.contractId),
+          eq(inspections.reservationId, contract.reservationId),
+          eq(inspections.vehicleId, contract.vehicleId),
+          eq(inspections.kind, 'RETURN'),
+        )).orderBy(desc(inspections.submittedAt)).limit(1))[0];
+      if (!ret || !vehicle || ['RENTED', 'OVERDUE', 'AWAITING_INSPECTION'].includes(vehicle.operationalStatus)) {
+        throw new ConflictException({
+          error: { code: 'RETURN_INSPECTION_REQUIRED', message: 'Inspection retour terminée obligatoire avant libération de la caution', vehicleStatus: vehicle?.operationalStatus ?? null },
+        });
+      }
+
       const updated = await tx.update(deposits).set({
         status: 'RELEASED', releasedBy: req.ctx!.userId, releasedAt: new Date(), releaseReason: body.reason, updatedAt: new Date(),
       }).where(eq(deposits.id, id)).returning();
@@ -208,10 +233,10 @@ export class FinanceController {
         before: { status: d.status }, after: { status: 'RELEASED' }, reason: body.reason,
       });
       await appendEvent(tx, req.ctx!.agencyId, 'DepositReleased', {
-        depositId: id, contractId: d.contractId, returnInspectionExists,
+        depositId: id, contractId: d.contractId, returnInspectionId: ret.id,
         reason: body.reason,
       });
-      return { ...updated[0], returnInspectionExists, contractNumber: contract[0]?.number };
+      return { ...updated[0], returnInspectionId: ret.id, contractNumber: contract.number };
     });
     dispatchPendingSafe();
     return result;
@@ -222,11 +247,15 @@ export class FinanceController {
   async charge(@Param('id', ParseUUIDPipe) id: string, @Body(new ZodValidationPipe(DepositChargeSchema)) body: z.infer<typeof DepositChargeSchema>, @Req() req: AuthedRequest) {
     return withTenant(req.ctx!.agencyId, async (tx) => {
       const rows = await tx.select().from(deposits)
-        .where(and(eq(deposits.id, id), eq(deposits.agencyId, req.ctx!.agencyId))).limit(1);
+        .where(and(eq(deposits.id, id), eq(deposits.agencyId, req.ctx!.agencyId))).for('update').limit(1);
       const d = rows[0];
       if (!d) throw new NotFoundException('Caution introuvable');
       if (!['HELD', 'PRE_AUTHORIZED', 'PARTIALLY_CHARGED'].includes(d.status)) throw new ForbiddenException('Caution non disponible');
       const amount = cents(body.amount);
+      const totalCharged = await tx.select({ sum: sql<string>`coalesce(sum(amount),0)` }).from(depositCharges).where(eq(depositCharges.depositId, id));
+      const charged = BigInt(totalCharged[0]?.sum ?? '0');
+      assertDepositChargeWithinRemainingAmount(d.amount, charged, amount);
+
       const paid = await tx.insert(payments).values({
         agencyId: req.ctx!.agencyId, direction: 'IN', method: 'CARD', purpose: 'DAMAGE',
         amount, currency: 'MAD', madEquivalent: amount, depositId: id, contractId: d.contractId,
@@ -236,14 +265,13 @@ export class FinanceController {
         agencyId: req.ctx!.agencyId, depositId: id, amount, reason: body.reason,
         damageId: body.damageId ?? null, approvedBy: req.ctx!.userId, paymentId: paid[0]!.id,
       }).returning();
-      const totalCharged = await tx.select({ sum: sql<string>`coalesce(sum(amount),0)` }).from(depositCharges).where(eq(depositCharges.depositId, id));
-      const charged = BigInt(totalCharged[0]?.sum ?? '0');
-      const newStatus = charged >= d.amount ? 'SETTLED' : 'PARTIALLY_CHARGED';
+      const newCharged = charged + amount;
+      const newStatus = newCharged >= d.amount ? 'SETTLED' : 'PARTIALLY_CHARGED';
       await tx.update(deposits).set({ status: newStatus, updatedAt: new Date() }).where(eq(deposits.id, id));
       await audit(tx, {
         agencyId: req.ctx!.agencyId, actor: { id: req.ctx!.userId, name: req.ctx!.fullName },
         entityType: 'deposit', entityId: id, action: 'DEPOSIT_CHARGED',
-        after: { amount: body.amount, reason: body.reason },
+        after: { amount: body.amount, reason: body.reason, totalCharged: newCharged.toString() },
       });
       return { charge: charge[0], payment: paid[0], depositStatus: newStatus };
     });
@@ -278,7 +306,7 @@ export class FinanceController {
       if (!open[0]) return { session: null, expectedMAD: 0n, cashPayments: [] };
       const session = open[0];
       const cashPayments = await tx.select().from(payments)
-        .where(and(eq(payments.cashSessionId, session.id))).orderBy(payments.receivedAt);
+        .where(eq(payments.cashSessionId, session.id)).orderBy(payments.receivedAt);
       const expected = session.openingBalance + cashPayments.reduce<bigint>((acc, p) =>
         acc + (p.direction === 'IN' ? (p.madEquivalent ?? p.amount) : -(p.madEquivalent ?? p.amount)), 0n);
       return { session, expectedMAD: expected, cashPayments };
@@ -362,4 +390,3 @@ export class FinanceController {
     });
   }
 }
-
