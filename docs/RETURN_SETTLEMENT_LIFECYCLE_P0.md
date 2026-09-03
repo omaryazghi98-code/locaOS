@@ -35,16 +35,22 @@ Regression tests must cover invalid and valid closure paths, including unresolve
 - Rental-integrity regression coverage now exercises the closure gates above.
 - **Inspection relationship integrity was hardened:** reservation-linked inspections now require an assigned reservation vehicle and require `reservation.vehicleId === inspection.vehicleId`; contract-linked inspections require `contract.vehicleId === inspection.vehicleId` and, when applicable, contract/reservation identity consistency.
 - Return-inspection completion revalidates the reservation/contract/vehicle relationships before transitioning the vehicle to `INSPECTED`.
+- **Deposit integrity was hardened:** deposit creation now refuses an amount below the reservation quote's `depositRequired`; deposit charging locks the deposit row and refuses charges above the remaining secured amount; deposit release now requires a contract/reservation/vehicle match plus a completed return-inspection state.
+- A database migration (`0006_deposit_integrity.sql`) adds authoritative activation and deposit-charge limits so direct database writes cannot bypass the core deposit invariants.
+- Pure deposit-integrity regression tests cover insufficient activation security, exact/above-required security, overcharging, zero charges, and exact remaining-capacity charges.
+
+### Important implementation note
+
+The API activation path still has its pre-existing status-only deposit check, but the new database trigger rejects an `ACTIVE` transition when the secured amount is below the current reservation quote requirement. The next hardening pass should surface that database invariant as a stable API error code and add endpoint-level activation tests rather than relying on the database exception boundary.
 
 ### Verified remaining work before this P0 can be considered complete
 
-1. Add regression tests specifically for mismatched inspection vehicle/contract/reservation combinations.
-2. Enforce `actual deposit amount >= quote.depositRequired` during activation.
-3. Prevent deposit charges from exceeding the remaining secured deposit amount.
-4. Prevent deposit release before a completed return inspection under the intended lifecycle policy.
-5. Finish authoritative final settlement rather than relying on close-time rental-payment comparison alone.
-6. Harden activation concurrency around contract/reservation/vehicle state.
-7. Complete period/price amendment recalculation through the shared money/time pricing helper.
-8. Explicitly model the post-return `INSPECTED → preparation/QC → rentable` lifecycle using the existing vehicle state machine.
+1. Add endpoint-level regression tests specifically for mismatched inspection vehicle/contract/reservation combinations.
+2. Add endpoint-level activation regression coverage for insufficient and sufficient deposit amounts, including stable `DEPOSIT_AMOUNT_INSUFFICIENT` API behavior.
+3. Add endpoint-level regression coverage for deposit overcharge and release-before-return-inspection.
+4. Finish authoritative final settlement rather than relying on close-time rental-payment comparison alone.
+5. Harden activation concurrency around contract/reservation/vehicle state.
+6. Complete period/price amendment recalculation through the shared money/time pricing helper.
+7. Explicitly model the post-return `INSPECTED → preparation/QC → rentable` lifecycle using the existing vehicle state machine.
 
 Do not mark the overall rental lifecycle pilot-ready until these invariants and their regression tests are green.
