@@ -21,7 +21,13 @@ describe('deposit integrity logic', () => {
 
   it('rejects a deposit charge above the remaining secured amount', () => {
     expect(() => assertDepositChargeWithinRemainingAmount(400000n, 300000n, 100001n)).toThrow(ConflictException);
-    expect(() => assertDepositChargeWithinRemainingAmount(400000n, 300000n, 100001n)).toThrow(/retenue dépasse/);
+    try {
+      assertDepositChargeWithinRemainingAmount(400000n, 300000n, 100001n);
+    } catch (error) {
+      expect((error as ConflictException).getResponse()).toMatchObject({
+        error: { code: 'DEPOSIT_CHARGE_EXCEEDS_REMAINING', remainingCents: '100000', requestedCents: '100001' },
+      });
+    }
   });
 
   it('rejects zero or negative deposit charges', () => {
