@@ -3,7 +3,7 @@ import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { toMadEquivalent } from '@locaos/domain';
 import { withTenant } from '../../db/client';
-import { cashSessions, contracts, customers, deposits, depositCharges, inspections, payments } from '../../db/schema';
+import { cashSessions, contracts, customers, deposits, depositCharges, inspections, payments, quotes, reservations, vehicles } from '../../db/schema';
 import { ZodValidationPipe } from '../common/zod.pipe.js';
 import { AuthGuard, AuthedRequest, PermissionsGuard, RequirePermission } from '../auth/guards.js';
 import { audit } from '../audit/audit.service.js';
@@ -157,6 +157,21 @@ export class FinanceController {
       const locked = await tx.execute(sql`select id from contracts where id = ${body.contractId} and agency_id = ${req.ctx!.agencyId} for update`);
       if (!locked.rows.length) throw new NotFoundException('Contrat introuvable');
 
+      const contract = (await tx.select({ reservationId: contracts.reservationId }).from(contracts)
+        .where(and(eq(contracts.id, body.contractId), eq(contracts.agencyId, req.ctx!.agencyId))).limit(1))[0];
+      let requiredDeposit = 0n;
+      if (contract?.reservationId) {
+        const reservation = (await tx.select({ quoteId: reservations.quoteId }).from(reservations)
+          .where(and(eq(reservations.id, contract.reservationId), eq(reservations.agencyId, req.ctx!.agencyId))).limit(1))[0];
+        if (reservation?.quoteId) {
+          const quote = (await tx.select({ depositRequired: quotes.depositRequired }).from(quotes)
+            .where(and(eq(quotes.id, reservation.quoteId), eq(quotes.agencyId, req.ctx!.agencyId))).limit(1))[0];
+          requiredDeposit = quote?.depositRequired ?? 0n;
+        }
+      }
+      const amount = cents(body.amount);
+      assertDepositCoversRequiredAmount(amount, requiredDeposit);
+
       const existing = await tx.select().from(deposits)
         .where(and(eq(deposits.contractId, body.contractId), inArray(deposits.status, ['PLANNED', 'HELD', 'PRE_AUTHORIZED', 'PARTIALLY_CHARGED'])))
         .limit(1);
@@ -167,7 +182,7 @@ export class FinanceController {
       }
 
       const inserted = await tx.insert(deposits).values({
-        agencyId: req.ctx!.agencyId, contractId: body.contractId, amount: cents(body.amount),
+        agencyId: req.ctx!.agencyId, contractId: body.contractId, amount,
         method: body.method, provider: body.method === 'CARD_PREAUTH' ? 'CMI_PLBS (saisie manuelle)' : null,
         providerRef: body.providerRef ?? null,
         preauthExpiresAt: body.preauthExpiresAt ? new Date(body.preauthExpiresAt) : null,
@@ -181,7 +196,7 @@ export class FinanceController {
       await audit(tx, {
         agencyId: req.ctx!.agencyId, actor: { id: req.ctx!.userId, name: req.ctx!.fullName },
         entityType: 'deposit', entityId: inserted[0]!.id, action: 'DEPOSIT_CREATED',
-        after: { amount: body.amount, method: body.method },
+        after: { amount: body.amount, method: body.method, requiredDeposit: (requiredDeposit / 100n).toString() },
       });
       return { ...inserted[0], status: body.method === 'CARD_PREAUTH' ? 'PRE_AUTHORIZED' : 'HELD' };
     });
@@ -203,13 +218,13 @@ export class FinanceController {
       if (!contract.reservationId || !contract.vehicleId) {
         throw new ConflictException({ error: { code: 'RETURN_FLOW_INCOMPLETE', message: 'Réservation et véhicule requis avant libération de la caution' } });
       }
-      const reservation = (await tx.select().from(require('../../db/schema').reservations)
-        .where(and(eq(require('../../db/schema').reservations.id, contract.reservationId), eq(require('../../db/schema').reservations.agencyId, req.ctx!.agencyId))).limit(1))[0];
+      const reservation = (await tx.select().from(reservations)
+        .where(and(eq(reservations.id, contract.reservationId), eq(reservations.agencyId, req.ctx!.agencyId))).limit(1))[0];
       if (!reservation || reservation.vehicleId !== contract.vehicleId) {
         throw new ConflictException({ error: { code: 'RETURN_VEHICLE_MISMATCH', message: 'Le véhicule du contrat ne correspond pas à la réservation' } });
       }
-      const vehicle = (await tx.select().from(require('../../db/schema').vehicles)
-        .where(and(eq(require('../../db/schema').vehicles.id, contract.vehicleId), eq(require('../../db/schema').vehicles.agencyId, req.ctx!.agencyId))).limit(1))[0];
+      const vehicle = (await tx.select().from(vehicles)
+        .where(and(eq(vehicles.id, contract.vehicleId), eq(vehicles.agencyId, req.ctx!.agencyId))).limit(1))[0];
       const ret = (await tx.select().from(inspections)
         .where(and(
           eq(inspections.agencyId, req.ctx!.agencyId),
