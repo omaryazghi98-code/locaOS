@@ -24,3 +24,27 @@ Make the rental completion lifecycle an enforced server-side invariant.
 Inspect and update the existing contract close, return inspection, finance/settlement, reservation, and fleet transition paths. Preserve existing domain semantics; do not invent unsupported policy.
 
 Regression tests must cover invalid and valid closure paths, including unresolved return inspection, unresolved settlement/financial obligation, and correct post-settlement vehicle disposition.
+
+## Progress checkpoint — 2026-09-03
+
+### Completed on `fix/return-settlement-availability`
+
+- Contract close now requires a return inspection, completed return state, finalized deposit disposition, settled rental balance, and resolved newly discovered return damage.
+- Contract close intentionally leaves the vehicle in `INSPECTED`; closure does **not** imply vehicle availability.
+- `transitionVehicle` remains the authoritative vehicle-status mutation path.
+- Rental-integrity regression coverage now exercises the closure gates above.
+- **Inspection relationship integrity was hardened:** reservation-linked inspections now require an assigned reservation vehicle and require `reservation.vehicleId === inspection.vehicleId`; contract-linked inspections require `contract.vehicleId === inspection.vehicleId` and, when applicable, contract/reservation identity consistency.
+- Return-inspection completion revalidates the reservation/contract/vehicle relationships before transitioning the vehicle to `INSPECTED`.
+
+### Verified remaining work before this P0 can be considered complete
+
+1. Add regression tests specifically for mismatched inspection vehicle/contract/reservation combinations.
+2. Enforce `actual deposit amount >= quote.depositRequired` during activation.
+3. Prevent deposit charges from exceeding the remaining secured deposit amount.
+4. Prevent deposit release before a completed return inspection under the intended lifecycle policy.
+5. Finish authoritative final settlement rather than relying on close-time rental-payment comparison alone.
+6. Harden activation concurrency around contract/reservation/vehicle state.
+7. Complete period/price amendment recalculation through the shared money/time pricing helper.
+8. Explicitly model the post-return `INSPECTED → preparation/QC → rentable` lifecycle using the existing vehicle state machine.
+
+Do not mark the overall rental lifecycle pilot-ready until these invariants and their regression tests are green.
