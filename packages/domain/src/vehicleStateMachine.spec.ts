@@ -21,7 +21,9 @@ describe('vehicle state machine (ADR-0010)', () => {
   it('rejects illegal jumps', () => {
     expect(checkTransition('AVAILABLE', 'RENTED', 'USER').ok).toBe(false);
     expect(checkTransition('AVAILABLE', 'INSPECTED', 'USER').ok).toBe(false);
-    expect(checkTransition('RENTED', 'AVAILABLE', 'USER').ok).toBe(false); // no silent return
+    expect(checkTransition('RENTED', 'AVAILABLE', 'USER').ok).toBe(false);
+    expect(checkTransition('INSPECTED', 'AVAILABLE', 'USER').ok).toBe(false); // post-return tasks are mandatory
+    expect(checkTransition('INSPECTED', 'AVAILABLE', 'OPS_SERVICE').ok).toBe(false); // tasks own this path
   });
 
   it('rejects same-state transitions', () => {
