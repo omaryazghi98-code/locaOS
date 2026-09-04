@@ -22,9 +22,9 @@ export default async function ReservationDetail({ params }: { params: Promise<{ 
   const rawLang = cookieStore.get('locaos-lang')?.value;
   const language = rawLang === 'ar' ? 'ar' : rawLang === 'en' ? 'en' : 'fr';
   const labels = {
-    fr: { contract: 'Préparer / imprimer le contrat', noVehicle: 'Affectez un véhicule depuis la flotte pour préparer le contrat.' },
-    ar: { contract: 'إعداد / طباعة العقد', noVehicle: 'قم بتعيين سيارة من الأسطول لإعداد العقد.' },
-    en: { contract: 'Prepare / print contract', noVehicle: 'Assign a vehicle from the fleet to prepare the contract.' },
+    fr: { contract: 'Créer / préparer le contrat', noVehicle: 'Affectez un véhicule depuis la flotte pour préparer le contrat.' },
+    ar: { contract: 'إنشاء / إعداد العقد', noVehicle: 'قم بتعيين سيارة من الأسطول لإعداد العقد.' },
+    en: { contract: 'Create / prepare contract', noVehicle: 'Assign a vehicle from the fleet to prepare the contract.' },
   } as const;
   const fmt = (s: string) => new Intl.DateTimeFormat('fr-MA', { timeZone: 'Africa/Casablanca', dateStyle: 'short', timeStyle: 'short' }).format(new Date(s));
   const mad = (v?: string) => new Intl.NumberFormat('fr-MA').format(Number(v ?? 0) / 100) + ' MAD';
@@ -32,6 +32,7 @@ export default async function ReservationDetail({ params }: { params: Promise<{ 
   return (
     <div>
       <div className="topbar"><div>
+        <div className="btnrow" style={{ marginBottom: 6 }}><a className="btn mini" href="/reservations">← Retour aux réservations</a></div>
         <h1 className="mono">{r.reference}</h1>
         <div className="sub">{d.customer ? [d.customer.firstName, d.customer.lastName, d.customer.companyName].filter(Boolean).join(' ') : ''} · {d.category?.name} · {d.vehicle?.plate ?? 'véhicule non affecté'}</div>
       </div><span className={`pill ${r.status === 'IN_PROGRESS' ? 'info' : 'ok'}`}>{r.status}</span></div>
