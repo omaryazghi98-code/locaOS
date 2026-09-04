@@ -6,6 +6,7 @@ import { useEffect, useRef, useState } from 'react';
 import { UI_STRINGS, FOCUS_STRINGS } from '@locaos/domain/i18n';
 import { ROLE_KEYS, type RoleKey } from '@locaos/domain/permissions';
 import { LanguageSwitcher } from './LanguageSwitcher';
+import { NaviQuickPanel } from './navi/NaviQuickPanel';
 import { DENSITY_EVENT, LANGUAGE_EVENT, readDensity, readLocale, setDensity, type Density, type Locale } from '@/lib/client-preferences';
 
 type NavEntry = { href: string; label: string; labelAr: string; labelEn: string; roles: readonly RoleKey[] };
@@ -17,7 +18,7 @@ const NAV: NavEntry[] = [
   { href: '/today', label: UI_STRINGS.MAIN_NAV.fr[1] as string, labelAr: UI_STRINGS.MAIN_NAV.ar[1] as string, labelEn: UI_STRINGS.MAIN_NAV.en[1] as string, roles: ['owner', 'manager', 'agent'] },
   { href: '/brief', label: UI_STRINGS.MAIN_NAV.fr[2] as string, labelAr: UI_STRINGS.MAIN_NAV.ar[2] as string, labelEn: UI_STRINGS.MAIN_NAV.en[2] as string, roles: ALL_ROLES },
   { href: '/reservations', label: UI_STRINGS.MAIN_NAV.fr[3] as string, labelAr: UI_STRINGS.MAIN_NAV.ar[3] as string, labelEn: UI_STRINGS.MAIN_NAV.en[3] as string, roles: ['owner', 'manager', 'agent', 'field_agent'] },
-  { href: '/calendar', label: UI_STRINGS.MAIN_NAV.fr[4] as string, labelAr: UI_STRINGS.MAIN_NAV.ar[4] as string, labelEn: UI_STRINGS.MAIN_NAV.en[4] as string, roles: ALL_ROLES },
+  { href: '/calendar', label: UI_STRINGS.MAIN_NAV.fr[4] as string, labelAr: UI_STRINGS.MAIN_NAV.en[4] as string, labelEn: UI_STRINGS.MAIN_NAV.en[4] as string, roles: ALL_ROLES },
   { href: '/fleet', label: UI_STRINGS.MAIN_NAV.fr[5] as string, labelAr: UI_STRINGS.MAIN_NAV.ar[5] as string, labelEn: UI_STRINGS.MAIN_NAV.en[5] as string, roles: ['owner', 'manager', 'mechanic'] },
   { href: '/customers', label: UI_STRINGS.MAIN_NAV.fr[6] as string, labelAr: UI_STRINGS.MAIN_NAV.ar[6] as string, labelEn: UI_STRINGS.MAIN_NAV.en[6] as string, roles: ['owner', 'manager', 'agent', 'accountant'] },
   { href: '/contracts', label: UI_STRINGS.MAIN_NAV.fr[7] as string, labelAr: UI_STRINGS.MAIN_NAV.ar[7] as string, labelEn: UI_STRINGS.MAIN_NAV.en[7] as string, roles: ['owner', 'manager', 'agent', 'field_agent'] },
@@ -26,7 +27,7 @@ const NAV: NavEntry[] = [
   { href: '/field', label: UI_STRINGS.MAIN_NAV.fr[9] as string, labelAr: UI_STRINGS.MAIN_NAV.ar[9] as string, labelEn: UI_STRINGS.MAIN_NAV.en[9] as string, roles: ['field_agent'] },
   { href: '/ops', label: 'Opérations', labelAr: 'العمليات', labelEn: 'Operations', roles: ['owner', 'manager', 'agent', 'field_agent', 'mechanic'] },
   { href: '/finance', label: UI_STRINGS.MAIN_NAV.fr[10] as string, labelAr: UI_STRINGS.MAIN_NAV.ar[10] as string, labelEn: UI_STRINGS.MAIN_NAV.en[10] as string, roles: ['owner', 'manager', 'accountant'] },
-  { href: '/reports', label: UI_STRINGS.MAIN_NAV.fr[11] as string, labelAr: UI_STRINGS.MAIN_NAV.ar[11] as string, labelEn: UI_STRINGS.MAIN_NAV.en[11] as string, roles: ['owner', 'manager', 'agent', 'accountant'] },
+  { href: '/reports', label: UI_STRINGS.MAIN_NAV.fr[11] as string, labelAr: UI_STRINGS.MAIN_NAV.en[11] as string, labelEn: UI_STRINGS.MAIN_NAV.en[11] as string, roles: ['owner', 'manager', 'agent', 'accountant'] },
   { href: '/alerts', label: UI_STRINGS.MAIN_NAV.fr[12] as string, labelAr: UI_STRINGS.MAIN_NAV.ar[12] as string, labelEn: UI_STRINGS.MAIN_NAV.en[12] as string, roles: ['owner', 'manager', 'agent', 'accountant'] },
 ];
 
@@ -37,6 +38,7 @@ export default function Shell({ children, user, agency, role }: { children: Reac
   const [lang, setLang] = useState<Locale>('fr');
   const [density, setDensityState] = useState<Density>('comfortable');
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const [naviQuickOpen, setNaviQuickOpen] = useState(false);
 
   useEffect(() => {
     const handleLanguage = (event: Event) => {
@@ -61,6 +63,7 @@ export default function Shell({ children, user, agency, role }: { children: Reac
 
   useEffect(() => {
     setMobileNavOpen(false);
+    setNaviQuickOpen(false);
     requestAnimationFrame(() => menuButtonRef.current?.focus());
   }, [path]);
 
@@ -68,6 +71,13 @@ export default function Shell({ children, user, agency, role }: { children: Reac
     if (!mobileNavOpen) return;
     requestAnimationFrame(() => document.querySelector<HTMLElement>('#primary-navigation a')?.focus());
   }, [mobileNavOpen]);
+
+  useEffect(() => {
+    if (!naviQuickOpen) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setNaviQuickOpen(false); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [naviQuickOpen]);
 
   const handleLangChange = (next: Locale) => {
     setLang(next);
@@ -91,6 +101,7 @@ export default function Shell({ children, user, agency, role }: { children: Reac
   const densityGroupLabel = lang === 'ar' ? 'كثافة العرض' : lang === 'en' ? 'Display density' : 'Densité d’affichage';
   const menuLabel = lang === 'ar' ? 'فتح التنقل' : lang === 'en' ? 'Open navigation' : 'Ouvrir la navigation';
   const closeMenuLabel = lang === 'ar' ? 'إغلاق التنقل' : lang === 'en' ? 'Close navigation' : 'Fermer la navigation';
+  const naviLabel = lang === 'ar' ? 'فتح NAVI السريع' : lang === 'en' ? 'Open NAVI quick panel' : 'Ouvrir NAVI';
 
   const logout = async () => {
     await fetch('/api/auth/logout', { method: 'POST' });
@@ -100,7 +111,7 @@ export default function Shell({ children, user, agency, role }: { children: Reac
 
   return (
     <>
-      <style>{`@media (min-width: 768px) and (max-width: 1100px) { .layout{grid-template-columns:228px minmax(0,1fr)} .side{width:228px;padding-inline:10px} .side .agency,.side .sub,.side nav a span,.side .lang-label{display:block} .side .logo{text-align:start;margin-inline:8px} .nav a{text-align:start;padding-inline:10px;min-height:40px;display:flex;align-items:center} .main{padding-inline:18px} .shell-footer{position:relative!important;inset:auto!important;margin-top:18px} } @media(max-width:767px){ .side:not(.open){visibility:hidden;pointer-events:none} } .shell-footer{margin-top:auto;padding-top:10px;border-top:1px solid var(--line)} .shell-density{display:grid;gap:6px;margin-top:10px} .shell-density > div{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:4px} .shell-density button{min-width:0;min-height:36px;padding-inline:6px} @media(max-width:767px){.shell-density button{min-height:44px}}`}</style>
+      <style>{`@media (min-width: 768px) and (max-width: 1100px) { .layout{grid-template-columns:228px minmax(0,1fr)} .side{width:228px;padding-inline:10px} .side .agency,.side .sub,.side nav a span,.side .lang-label{display:block} .side .logo{text-align:start;margin-inline:8px} .nav a{text-align:start;padding-inline:10px;min-height:40px;display:flex;align-items:center} .main{padding-inline:18px} .shell-footer{position:relative!important;inset:auto!important;margin-top:18px} } @media(max-width:767px){ .side:not(.open){visibility:hidden;pointer-events:none} } .shell-footer{margin-top:auto;padding-top:10px;border-top:1px solid var(--line)} .shell-density{display:grid;gap:6px;margin-top:10px} .shell-density > div{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:4px} .shell-density button{min-width:0;min-height:36px;padding-inline:6px} @media(max-width:767px){.shell-density button{min-height:44px}} .navi-quick-backdrop{position:fixed;inset:0;z-index:90;border:0;background:rgb(3 7 12 / .52);backdrop-filter:blur(3px);cursor:default} .navi-quick-panel{position:fixed;z-index:91;inset-block:0;inset-inline-end:0;width:min(560px,94vw);overflow:auto;background:var(--panel,#111821);border-inline-start:1px solid var(--line);box-shadow:-24px 0 70px rgb(0 0 0 / .38);padding:24px} .navi-quick-head{display:flex;justify-content:space-between;gap:18px;align-items:flex-start;margin-bottom:16px} .navi-quick-title{display:flex;align-items:center;gap:9px;font-weight:750;letter-spacing:.02em} .navi-quick-sub{margin-top:5px;color:var(--text-soft);font-size:12px} .navi-quick-tools{display:flex;align-items:center;gap:6px} .navi-quick-summary{border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-bottom:12px;color:var(--text-soft);font-size:12px;background:rgb(255 255 255 / .025)} @media(max-width:767px){.navi-quick-panel{width:100%;padding:18px}.navi-quick-head{padding-top:10px}}`}</style>
       <div className="layout">
         <button ref={menuButtonRef} type="button" className="mobile-menu-toggle" aria-controls="primary-navigation" aria-expanded={mobileNavOpen} aria-label={mobileNavOpen ? closeMenuLabel : menuLabel} onClick={() => setMobileNavOpen((open) => !open)}>
           <span aria-hidden="true">☰</span>
@@ -110,7 +121,11 @@ export default function Shell({ children, user, agency, role }: { children: Reac
           <div className="logo">loca<span>OS</span></div>
           <div className="agency">{agency}</div>
           <nav id="primary-navigation" className="nav" aria-label={lang === 'ar' ? 'التنقل الرئيسي' : lang === 'en' ? 'Primary navigation' : 'Navigation principale'}>
-            {filteredNav.map((entry) => <Link key={entry.href} href={entry.href} className={path === entry.href || (entry.href !== '/' && path.startsWith(entry.href)) ? 'active' : ''} aria-current={path === entry.href ? 'page' : undefined} onClick={closeMobileNav}><span>{labels(entry)}</span></Link>)}
+            {filteredNav.map((entry) => entry.href === '/navi' ? (
+              <button key={entry.href} type="button" className={naviQuickOpen ? 'active' : ''} aria-label={naviLabel} aria-pressed={naviQuickOpen} onClick={() => { setNaviQuickOpen(true); setMobileNavOpen(false); }}><span>{labels(entry)}</span></button>
+            ) : (
+              <Link key={entry.href} href={entry.href} className={path === entry.href || (entry.href !== '/' && path.startsWith(entry.href)) ? 'active' : ''} aria-current={path === entry.href ? 'page' : undefined} onClick={closeMobileNav}><span>{labels(entry)}</span></Link>
+            ))}
           </nav>
           <LanguageSwitcher onLangChange={handleLangChange} />
           <div className="shell-footer">
@@ -128,6 +143,7 @@ export default function Shell({ children, user, agency, role }: { children: Reac
         </aside>
         <main id="app-content" className="main">{children}</main>
       </div>
+      <NaviQuickPanel open={naviQuickOpen && path !== '/navi'} onClose={() => setNaviQuickOpen(false)} />
     </>
   );
 }
