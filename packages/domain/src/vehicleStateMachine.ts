@@ -41,9 +41,10 @@ export const TRANSITIONS: readonly TransitionRule[] = [
   { from: 'OVERDUE', to: 'AWAITING_INSPECTION', actors: ['USER', 'INSPECTION_SERVICE'] },
   { from: 'RENTED', to: 'AWAITING_INSPECTION', actors: ['USER', 'INSPECTION_SERVICE'] },
   { from: 'AWAITING_INSPECTION', to: 'INSPECTED', actors: ['USER', 'INSPECTION_SERVICE'] },
-  { from: 'INSPECTED', to: 'CLEANING', actors: ['USER', 'OPS_SERVICE'] },
-  { from: 'INSPECTED', to: 'AVAILABLE', actors: ['USER', 'OPS_SERVICE'] },
-  { from: 'CLEANING', to: 'AVAILABLE', actors: ['USER', 'OPS_SERVICE'] },
+  // Post-return availability is task-gated. Operations tasks own preparation completion.
+  { from: 'INSPECTED', to: 'CLEANING', actors: ['OPS_SERVICE'], note: 'Preparation work starts' },
+  { from: 'INSPECTED', to: 'MAINTENANCE', actors: ['OPS_SERVICE'], reasonRequired: true, note: 'Preparation maintenance starts' },
+  { from: 'CLEANING', to: 'AVAILABLE', actors: ['OPS_SERVICE'], reasonRequired: true, note: 'Preparation complete / QA passed' },
   // Interrupts — allowed from any non-terminal exceptional state; never from→same.
   { from: 'ANY', to: 'MAINTENANCE', actors: ['USER', 'SCHEDULER'], reasonRequired: true },
   { from: 'ANY', to: 'IMMOBILIZED', actors: ['USER'], reasonRequired: true, note: 'Hold / seizure (Fourrière)' },
@@ -102,6 +103,4 @@ export const PIPELINE_STATES: readonly VehicleStatus[] = [
 ];
 export const EXCEPTIONAL_STATES: readonly VehicleStatus[] = ['MAINTENANCE', 'IMMOBILIZED', 'ACCIDENT', 'UNAVAILABLE'];
 export const isExceptional = (s: VehicleStatus) => (EXCEPTIONAL_STATES as readonly string[]).includes(s);
-
-/** Can this status be handed to a customer right now? */
 export const rentableFrom = (s: VehicleStatus) => s === 'CONTRACT_READY' || s === 'IN_TRANSIT';
