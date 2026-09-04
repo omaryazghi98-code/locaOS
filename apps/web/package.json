@@ -10,6 +10,8 @@
   },
   "dependencies": {
     "@locaos/domain": "workspace:*",
+    "lucide-react": "^0.500.0",
+    "motion": "^12",
     "next": "^15.2.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"

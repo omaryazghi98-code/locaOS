@@ -11,6 +11,8 @@ import { DENSITY_EVENT, LANGUAGE_EVENT, readDensity, readLocale, setDensity, typ
 type NavEntry = { href: string; label: string; labelAr: string; labelEn: string; roles: readonly RoleKey[] };
 const ALL_ROLES = ROLE_KEYS;
 const NAV: NavEntry[] = [
+  // NAVI reads /api/ops/*, /api/alerts, /api/fleet/vehicles — permissions every role holds (ops:read, alerts:read, fleet:read).
+  { href: '/navi', label: 'NAVI', labelAr: 'NAVI', labelEn: 'NAVI', roles: ALL_ROLES },
   { href: '/', label: UI_STRINGS.MAIN_NAV.fr[0] as string, labelAr: UI_STRINGS.MAIN_NAV.ar[0] as string, labelEn: UI_STRINGS.MAIN_NAV.en[0] as string, roles: ALL_ROLES },
   { href: '/today', label: UI_STRINGS.MAIN_NAV.fr[1] as string, labelAr: UI_STRINGS.MAIN_NAV.ar[1] as string, labelEn: UI_STRINGS.MAIN_NAV.en[1] as string, roles: ['owner', 'manager', 'agent'] },
   { href: '/brief', label: UI_STRINGS.MAIN_NAV.fr[2] as string, labelAr: UI_STRINGS.MAIN_NAV.ar[2] as string, labelEn: UI_STRINGS.MAIN_NAV.en[2] as string, roles: ALL_ROLES },
