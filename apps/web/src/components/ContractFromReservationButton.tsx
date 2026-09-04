@@ -26,12 +26,11 @@ export default function ContractFromReservationButton({
       if (!res.ok || !out?.contract?.id) {
         throw new Error(out?.error?.message ?? out?.message ?? 'Impossible de préparer le contrat');
       }
-      const url = `/api/contracts/${encodeURIComponent(out.contract.id)}/pdf`;
-      const popup = window.open(url, '_blank', 'noopener,noreferrer');
-      if (!popup) window.location.href = url;
+      // Creating/preparing a contract should land on its operational workspace.
+      // Printing is an explicit action there so agents can review missing fields first.
+      window.location.href = `/contracts/${encodeURIComponent(out.contract.id)}`;
     } catch (error) {
       window.alert(error instanceof Error ? error.message : 'Impossible de préparer le contrat');
-    } finally {
       setBusy(false);
     }
   };
