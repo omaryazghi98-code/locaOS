@@ -1,56 +1,57 @@
-# NAVI — Frontend Command Center (branch `genspark_ai_developer`, base `codex/post-return-ops`)
+# NAVI — Frontend Command Center
 
-## What was built (frontend only — zero backend/domain changes)
+Branch: `genspark_ai_developer` · base: `codex/post-return-ops` · PR #17
 
-Route: `/navi` inside the console shell (auth, role nav, FR/AR/EN + RTL, density all inherited).
+## Implemented
 
-```
-apps/web/src/app/navi.css                       tokens + NAVI component classes (layered on globals.css, nothing renamed)
-apps/web/src/app/(console)/navi/page.tsx        server page → <NaviCommandCenter/>
-apps/web/src/lib/navi/
-  types.ts        read-model types mirroring REAL payloads (command-center, focus, tasks, alerts, vehicles)
-  useNaviData.ts  5 independent fetches, per-panel loading/error/retry, 60 s refresh while tab visible
-  derive.ts       pure regroupings: attention items (P1/P2/P3), fleet counts, post-return lanes, activity, brief counts
-  intents.ts      command router: structured retrieval over loaded data → ANSWER → EVIDENCE → RELATED → ACTIONS
-  i18n.ts         FR/AR/EN catalog for all NAVI copy
-  hooks.ts        useLocale (existing cookie/event contract), useReducedMotion, useNow, useInViewport
-apps/web/src/components/navi/
-  NaviCommandCenter  orchestrator (hero, brief lede with evidence anchors, KPIs, two-column panels)
-  NaviSurface        raw-WebGL ambient shader (hero only; DPR≤1.25, 75% res, 30 fps, paused off-screen/hidden;
-                     CSS gradient fallback; removed under prefers-reduced-motion; pointer-events none)
-  NaviCommandInput   ⌘K combobox (ARIA 1.2 listbox), suggestion chips, thinking → answer states
-  AttentionStack     Immédiat / Aujourd'hui / Cette semaine cards: severity, what, why, entities, primary action,
-                     in-place ack/resolve for alerts (existing /api/alerts/:id/ack|resolve)
-  PostReturnPipeline INSPECTED → REVUE → NETTOYAGE → MAINTENANCE → QA → DISPONIBLE lanes from vehicle status +
-                     open tasks; triage/start/complete wired to existing /api/ops/tasks endpoints
-  OperationLanes     today's departures/returns on a time axis with "now" marker, readiness/blocker chips
-  FleetPulse         14-status distribution bar + legend filter + vehicle chips
-  ActivityTimeline   alerts + task events, newest first
-  NaviAction         accessible inline confirm/prompt mutation (pending → done → error/retry), replaces confirm()/prompt()
-  primitives         AnimatedNumber, Chip, Kbd, Skeleton, PanelState, Panel
-```
+NAVI lives at `/navi` inside the console shell. It uses existing authenticated, tenant-scoped endpoints and does not create backend/domain/schema/permission truth.
 
-Propagation started: `StatusBadge` now emits `data-status` and uses per-status tokens (class contract preserved).
-Shell nav gained a `NAVI` entry for all roles (endpoints used require only ops:read / alerts:read / fleet:read).
+- Layered NAVI design tokens in `apps/web/src/app/navi.css`.
+- Five independent real-data fetches with per-panel loading/error/retry and 60s visible-tab refresh.
+- Evidence-anchored hero brief and animated tabular KPIs.
+- Structured command router over loaded data: `ANSWER → EVIDENCE → RELATED → ACTIONS`.
+- Attention stack with existing alert acknowledgement/resolution.
+- Post-return pipeline: `INSPECTED → REVUE → NETTOYAGE → MAINTENANCE → QA → DISPONIBLE` derived from real vehicle/task state.
+- Fleet pulse, operation lanes and activity timeline from available APIs.
+- `NaviAction` for accessible confirmation/prompt mutations with pending/done/error/retry states.
+- Ambient raw-WebGL hero surface only; constrained DPR/render rate, viewport pause, CSS fallback and reduced-motion removal.
+- FR/AR/EN catalog, RTL-aware interaction, keyboard/focus/ARIA handling.
+- `StatusBadge` now exposes `data-status` semantic tokens.
+- NAVI is available in the shell navigation for all roles whose existing read permissions support its panels.
 
-## Status colour semantics (navi.css)
-AVAILABLE green · RESERVED indigo · PREPARING/CONTRACT_READY/IN_TRANSIT blues · RENTED brand blue · OVERDUE red ·
-AWAITING_INSPECTION amber · INSPECTED teal · CLEANING cyan · MAINTENANCE orange · QA/PREPARATION_REVIEW violet (task lanes, not vehicle states) ·
-IMMOBILIZED/ACCIDENT deep red · UNAVAILABLE slate.
+## Phase 5 propagation — completed
 
-## Verified
-`pnpm --filter @locaos/web typecheck` ✓ · `pnpm lint` 0 errors ✓ · rendered against seeded Atlas Rent data at 1440px and 390px.
+The NAVI visual grammar is now propagated without making every screen a duplicate of the command center:
 
-## Backend gaps documented (NOT fabricated)
-1. **No natural-language query endpoint** (`/api/navi/query`). The command input is a structured intent router over
-   already-loaded data (plate, RES-ref, attention, blockers, returns, preparation, fleet, navigation). Labelled as such in UI.
-2. **No global operational event feed.** Activity timeline uses open alerts + operations tasks only. Vehicle state
-   transitions exist per vehicle (`/api/fleet/vehicles/:id`) but not agency-wide.
-3. `command-center.actions[kind=TRANSFER].label` exposes a truncated UUID — NAVI shows the plate from `branchMismatches` instead.
-4. `/api/ops/tasks` returns no `updated_at` guaranteed in the list; timeline uses `created_at`/`completed_at`.
-5. `focus.returns[].customerName` can be null (seed RES without customer join) — handled with fallbacks.
+- `/` dashboard: NAVI panels, operational hierarchy, risk/action surfaces and direct NAVI entry while retaining the existing command-center data contract.
+- `/fleet`: NAVI fleet-pulse/status distribution using the same semantic vehicle-state tokens; existing localized table and density behavior retained.
+- `/fleet/[id]`: operational status badge, NAVI panels for vehicle facts/actions, explicit INSPECTED → operations routing, and history/documents remain authoritative.
+- `/ops`: NAVI panels for triage/work/QA counts, accessible `NaviAction` mutations, explicit QA validation language, and direct NAVI pipeline linkage.
 
-## Remaining work (next PR)
-- Phase 5 propagation: dashboard `/`, `/fleet`, `/ops` to adopt NAVI panels/cards (tokens already shared).
-- Phase 6 audit: axe pass, keyboard walkthrough of pipeline actions, RTL screenshot review, Lighthouse on `/navi`.
-- Optional: extract NaviAction to replace ActionButton's native dialogs across the console.
+The propagation does not add new API endpoints or new lifecycle states.
+
+## Backend gaps — deliberately not fabricated
+
+1. No natural-language query endpoint (`/api/navi/query`); command input remains a structured router over loaded data.
+2. No agency-wide operational event feed; activity timeline remains alerts + operations tasks.
+3. `command-center.actions[kind=TRANSFER].label` can expose a truncated UUID; NAVI uses the plate from `branchMismatches` instead.
+4. `/api/ops/tasks` does not guarantee `updated_at`; timeline uses `created_at`/`completed_at`.
+5. `focus.returns[].customerName` can be null; NAVI handles fallbacks.
+
+## Phase 6 — remaining verification
+
+After the propagation commits, verification still needs to be run against the resulting branch:
+
+- `pnpm --filter @locaos/web typecheck`
+- `pnpm lint`
+- axe/accessibility pass
+- keyboard-only walkthrough of NAVI pipeline and `/ops` actions
+- FR/AR/EN and RTL screenshot review at desktop/mobile widths
+- Lighthouse/performance check on `/navi`
+- verify reduced-motion behavior and shader containment
+
+No post-propagation test/CI result is claimed here until actually run.
+
+## Next architectural step
+
+Do not put AI decision authority inside NAVI components. The future intelligence layer should resolve user intent into an allow-listed domain tool/action, call the authoritative API, return evidence/result, and refresh NAVI state. AI must never bypass the domain state machine, permissions, tenant isolation, settlement rules, inspection evidence or audit trail.
