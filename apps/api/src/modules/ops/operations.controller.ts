@@ -102,7 +102,18 @@ export class OperationsController {
       const current=(found as unknown as {rows:any[]}).rows[0]; if(!current) throw new ForbiddenException('Tâche introuvable');
       if(['COMPLETED','CANCELLED'].includes(current.status)&&body.status&&body.status!==current.status) throw new ConflictException('Une tâche terminée ne peut pas être réouverte');
       if(body.status==='COMPLETED'&&!body.completionNote?.trim()) throw new ConflictException('Une note de fin est requise pour clôturer cette tâche');
-      const nextStatus=body.status??current.status; const actualCost=body.actualCost!=null?BigInt(Math.round(Number(body.actualCost)*100)):null;
+      const nextStatus=body.status??current.status;
+
+      // Combined cleaning + maintenance is deliberately sequential. The vehicle's
+      // operational state must describe the phase currently being executed; maintenance
+      // cannot start while a return-cleaning task is still open.
+      if(nextStatus==='IN_PROGRESS'&&current.status!=='IN_PROGRESS'&&current.task_kind==='MAINTENANCE'){
+        const cleaning=await tx.execute(sql`select count(*)::int as n from operations_tasks where agency_id=${req.ctx!.agencyId} and vehicle_id=${current.vehicle_id} and task_kind='CLEANING' and status in ('OPEN','ASSIGNED','IN_PROGRESS','BLOCKED')`);
+        const n=Number((cleaning as unknown as {rows:{n:number}[]}).rows[0]?.n??0);
+        if(n>0) throw new ConflictException('Le nettoyage doit être terminé avant le démarrage de la maintenance post-retour');
+      }
+
+      const actualCost=body.actualCost!=null?BigInt(Math.round(Number(body.actualCost)*100)):null;
       const r=await tx.execute(sql`update operations_tasks set status=${nextStatus},assigned_to=${body.assignedTo===undefined?current.assigned_to:body.assignedTo},vendor_id=${body.vendorId===undefined?current.vendor_id:body.vendorId},completion_note=${body.completionNote??current.completion_note},actual_cost=${actualCost??current.actual_cost},evidence=${body.evidence?JSON.stringify(body.evidence):current.evidence},completed_at=${nextStatus==='COMPLETED'?new Date():current.completed_at},completed_by=${nextStatus==='COMPLETED'?req.ctx!.userId:current.completed_by},updated_at=now() where id=${id} and agency_id=${req.ctx!.agencyId} returning *`);
       const task=(r as unknown as {rows:any[]}).rows[0];
       if(nextStatus==='IN_PROGRESS'&&current.status!=='IN_PROGRESS'&&current.task_kind==='CLEANING') await transitionVehicle(tx,req.ctx!.agencyId,{vehicleId:current.vehicle_id,to:'CLEANING',actorId:req.ctx!.userId,actorName:req.ctx!.fullName,actorKind:'OPS_SERVICE',reason:'Tâche de nettoyage démarrée',sourceType:'operations_task',sourceId:id});
@@ -110,6 +121,10 @@ export class OperationsController {
       if(nextStatus==='COMPLETED'&&['CLEANING','MAINTENANCE'].includes(current.task_kind)){
         const remaining=await tx.execute(sql`select count(*)::int as n from operations_tasks where agency_id=${req.ctx!.agencyId} and vehicle_id=${current.vehicle_id} and task_kind in ('CLEANING','MAINTENANCE') and status in ('OPEN','ASSIGNED','IN_PROGRESS','BLOCKED')`);
         const n=Number((remaining as unknown as {rows:{n:number}[]}).rows[0]?.n??0);
+        if(current.task_kind==='CLEANING'&&n>0){
+          const maintenance=await tx.execute(sql`select id from operations_tasks where agency_id=${req.ctx!.agencyId} and vehicle_id=${current.vehicle_id} and task_kind='MAINTENANCE' and status in ('OPEN','ASSIGNED','IN_PROGRESS','BLOCKED') limit 1`);
+          if((maintenance as unknown as {rows:any[]}).rows[0]) await transitionVehicle(tx,req.ctx!.agencyId,{vehicleId:current.vehicle_id,to:'MAINTENANCE',actorId:req.ctx!.userId,actorName:req.ctx!.fullName,actorKind:'OPS_SERVICE',reason:'Nettoyage terminé — phase de maintenance post-retour',sourceType:'operations_task',sourceId:id});
+        }
         if(n===0){
           const existingQa=await tx.execute(sql`select id from operations_tasks where agency_id=${req.ctx!.agencyId} and vehicle_id=${current.vehicle_id} and task_kind='QA' and status in ('OPEN','ASSIGNED','IN_PROGRESS','BLOCKED') limit 1`);
           if(!(existingQa as unknown as {rows:any[]}).rows[0]) await tx.execute(sql`insert into operations_tasks(agency_id,vehicle_id,reservation_id,contract_id,source_inspection_id,task_kind,title,description,priority,status,created_by) values(${current.agency_id},${current.vehicle_id},${current.reservation_id},${current.contract_id},${current.source_inspection_id},'QA','Contrôle qualité avant remise en location','Vérifier la préparation terminée et autoriser ou bloquer la remise en disponibilité.','HIGH','OPEN',${req.ctx!.userId})`);
