@@ -32,6 +32,14 @@ async function flushQueue(log: (s: string) => void) {
   }
 }
 
+async function readApiError(res: Response): Promise<string> {
+  const out = await res.json().catch(() => null) as { error?: { message?: string }; message?: string | string[]; statusCode?: number } | null;
+  if (typeof out?.error?.message === 'string') return out.error.message;
+  if (Array.isArray(out?.message)) return out.message.join(', ');
+  if (typeof out?.message === 'string') return out.message;
+  return `Erreur HTTP ${res.status}`;
+}
+
 export default function FieldPage() {
   const [startedAt, setStartedAt] = useState<string | null>(null);
   const [pickers, setPickers] = useState<Picker[]>([]);
@@ -51,8 +59,6 @@ export default function FieldPage() {
 
     (async () => {
       try {
-        // The today's list is useful for the generic field workflow, but a reservation opened
-        // directly must resolve itself even when its pickup date is not today.
         const detail = reservationId
           ? await fetch(`/api/reservations/${reservationId}`).then((r) => r.ok ? r.json() : null)
           : null;
@@ -92,12 +98,12 @@ export default function FieldPage() {
   const log = useCallback((s: string) => setStatus((x) => [s, ...x].slice(0, 5)), []);
 
   const submit = async () => {
-    if (!form.vehicleId || !form.mileageKm) { log('Véhicule affecté et kilométrage obligatoires'); return; }
+    if ((!form.vehicleId && !form.reservationId) || !form.mileageKm) { log('Réservation/véhicule affecté et kilométrage obligatoires'); return; }
     const clientUuid = crypto.randomUUID();
     const startedAtIso = startedAt ?? new Date().toISOString();
     const payload = {
       clientUuid, kind: form.kind,
-      vehicleId: form.vehicleId,
+      ...(form.vehicleId ? { vehicleId: form.vehicleId } : {}),
       reservationId: form.reservationId || undefined,
       startedAt: startedAtIso,
       mileageKm: Number(form.mileageKm), fuelLevelPct: Number(form.fuelLevelPct),
@@ -112,13 +118,16 @@ export default function FieldPage() {
     } else {
       try {
         const res = await fetch('/api/inspections', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload) });
-        const out = await res.json();
-        const seconds = Math.round((Date.now() - new Date(startedAtIso).getTime()) / 1000);
-        if (res.ok) { log(`Inspection enregistrée${out.duplicate ? ' (doublon ignoré)' : ''} en ${seconds}s`); }
-        else { log(`Erreur: ${out?.error?.message ?? res.status}`); }
+        if (res.ok) {
+          const out = await res.json();
+          const seconds = Math.round((Date.now() - new Date(startedAtIso).getTime()) / 1000);
+          log(`Inspection enregistrée${out.duplicate ? ' (doublon ignoré)' : ''} en ${seconds}s`);
+          setStartedAt(null); setChecklist({}); setDamages([]); setForm((f) => ({ ...f, mileageKm: '', customerAckName: '', notes: '' }));
+        } else {
+          log(`Erreur: ${await readApiError(res)}`);
+        }
       } catch { saveQueue([...loadQueue(), { clientUuid, payload, at: new Date().toISOString() }]); setQueueLen(loadQueue().length); log('Hors ligne — mis en file'); }
     }
-    setStartedAt(null); setChecklist({}); setDamages([]); setForm((f) => ({ ...f, mileageKm: '', customerAckName: '', notes: '' }));
   };
 
   return (
@@ -127,7 +136,10 @@ export default function FieldPage() {
         <h1>Terrain — inspection</h1>
         <div className="sub">Mode hors ligne prêt. Objectif &lt; 60 s — sans sacrifier les preuves photo.</div>
       </div>
-        <span className={`pill ${online ? 'ok' : 'danger'}`}>{online ? 'en ligne' : 'hors ligne'}</span>
+        <div className="btnrow">
+          {form.reservationId && <a className="btn mini" href={`/reservations/${form.reservationId}`}>← Retour à la réservation</a>}
+          <span className={`pill ${online ? 'ok' : 'danger'}`}>{online ? 'en ligne' : 'hors ligne'}</span>
+        </div>
       </div>
 
       <div className="card" style={{ maxWidth: 640 }}>
