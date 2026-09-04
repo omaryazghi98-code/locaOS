@@ -36,6 +36,7 @@ export default async function VehicleDetail({ params }: { params: Promise<{ id: 
         <div className="btnrow"><span className={`pill ${v.operationalStatus === 'AVAILABLE' ? 'ok' : v.operationalStatus === 'RENTED' ? 'info' : 'warn'}`}>{v.operationalStatus}</span>
           {d.currentContract && <a className="btn mini" href={`/api/contracts/${d.currentContract.id}/pdf`} target="_blank" rel="noreferrer">Contrat / PDF</a>}
           {d.nextReservation && !d.currentContract && <a className="btn mini" href={`/reservations/${d.nextReservation.id}`}>Préparer contrat</a>}
+          {v.operationalStatus === 'INSPECTED' && <a className="btn mini" href="/ops">Traiter préparation</a>}
         </div>
       </div>
 
@@ -47,13 +48,21 @@ export default async function VehicleDetail({ params }: { params: Promise<{ id: 
       </div>
 
       <h2>Actions (machine à états)</h2>
-      <div className="btnrow">
-        {OPTIONS.filter(([s]) => s !== v.operationalStatus).map(([s, label]) => (
-          <ActionButton key={s} path={`/api/fleet/vehicles/${v.id}/transition`} body={{ to: s }} label={label}
-            variant={s === 'AVAILABLE' || s === 'CONTRACT_READY' ? 'primary' : ['IMMOBILIZED', 'UNAVAILABLE', 'MAINTENANCE'].includes(s) ? 'danger' : ''}
-            promptLabel="Motif (obligatoire pour les états exceptionnels)" promptField="reason" />
-        ))}
-      </div>
+      {v.operationalStatus === 'INSPECTED' ? (
+        <div className="card">
+          <strong>Préparation requise avant remise en location.</strong>
+          <div className="sub" style={{ marginTop: 5 }}>Ce véhicule ne peut plus passer directement de INSPECTED à AVAILABLE par un agent. Ouvrez Opérations pour trier la préparation post-retour.</div>
+          <div className="btnrow" style={{ marginTop: 8 }}><a className="btn mini primary" href="/ops">Ouvrir les opérations</a></div>
+        </div>
+      ) : (
+        <div className="btnrow">
+          {OPTIONS.filter(([s]) => s !== v.operationalStatus).map(([s, label]) => (
+            <ActionButton key={s} path={`/api/fleet/vehicles/${v.id}/transition`} body={{ to: s }} label={label}
+              variant={s === 'AVAILABLE' || s === 'CONTRACT_READY' ? 'primary' : ['IMMOBILIZED', 'UNAVAILABLE', 'MAINTENANCE'].includes(s) ? 'danger' : ''}
+              promptLabel="Motif (obligatoire pour les états exceptionnels)" promptField="reason" />
+          ))}
+        </div>
+      )}
       <div className="sub">Toute transition illégale est refusée par la machine à états et journalisée. OVERDUE est réservé à l'évaluateur système.</div>
 
       {d.currentContract && (
