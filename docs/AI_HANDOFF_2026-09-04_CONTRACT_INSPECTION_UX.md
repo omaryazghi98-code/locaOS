@@ -5,7 +5,7 @@ The operator created a real customer and reservation locally and reached the res
 
 The generated contract PDF was reviewed. It is already intentionally printable with many blank/manual fields, including CIN/passport, driving licence, licence date, birth date, address, deposit mode/date, deductible/CDW, territorial authorization, mileage allowance/extra-km rate, return mileage/fuel, additional drivers, consents and signatures. Known reservation/customer/vehicle/pricing data is prefilled.
 
-Product decision: do not block contract printing merely because those fields are not yet captured digitally. The contract preparation flow should distinguish known serialized data from optional paper-completion fields. Missing fields can remain blank for handwriting until their structured digital capture is implemented and legally validated.
+Product decision: do not block contract printing merely because those fields are not yet captured digitally. The contract preparation flow should distinguish known serialized data from optional paper-completion fields. Missing fields can remain blank and be completed on paper until their structured digital capture is implemented and legally validated.
 
 ## Contract UX changes
 - Reservation action no longer immediately opens the PDF after creating/reusing the contract.
@@ -15,7 +15,25 @@ Product decision: do not block contract printing merely because those fields are
 - Added contextual back navigation to the originating reservation (or contracts list when no reservation is linked).
 - Preserved immutable contract versions; no post-issue silent mutation was introduced.
 
-Commit: `1da53903cba298e7f028187a04e52c302598747b`
+## Contract signing regression found during local test
+The operator attempted to sign the newly prepared contract before printing and received `Erreur interne`.
+
+Local API log identified the exact database failure:
+`invalid input value for enum contract_status: ""`
+from `ContractsController.sign` while updating the contract status.
+
+Root cause is the database activation backstop introduced in migrations 0008/0009. Its trigger function used:
+`coalesce(old.status, '') <> 'ACTIVE'`
+where `old.status` is PostgreSQL enum `contract_status`. PostgreSQL attempts to coerce the empty string to that enum, which is invalid. The trigger therefore fires on an ordinary `DRAFT -> SIGNED` status update and crashes the signing transaction.
+
+This is a database-trigger bug, not bad customer data and not a reason to reset the local database.
+
+Fix committed in migration `0010_fix_contract_activation_trigger.sql`:
+- replaces the enum/empty-string comparison with `old.status is distinct from 'ACTIVE'`
+- preserves `PARTIALLY_CHARGED` as a valid secured deposit state
+- keeps the trigger scoped to transitions into `ACTIVE`
+
+Fix commit: `5351ed9d0e0d7aa28f93fe13bc74b5eaae43409b`
 
 ## Inspection UX/domain changes
 - Reservation-linked inspections no longer require the client to submit a vehicle UUID.
@@ -26,20 +44,27 @@ Commit: `1da53903cba298e7f028187a04e52c302598747b`
 - Added contextual `Retour à la réservation` navigation.
 - API errors now display the actual Nest error message instead of collapsing common 403 responses to `Erreur: 403`.
 
-Commits:
-- `6ef02dd0902a92ed5f7e7060bf5c8a4c3fd3c15f` — resolve inspection vehicle from reservation
-- `376c284fa1e9a3f8c14fd9456897d0773c98c162` — improve inspection errors and navigation
-
 ## Contract preparation component
-- `7396357eb0e246fd79c27746bb353f94100a0b75` changes reservation contract creation to land on the contract workspace rather than auto-printing.
-- `e0d55f9b681d50a711bc88eb0c20c91c44c12d05` adds reservation back navigation and updates the action label to `Créer / préparer le contrat`.
+- Reservation contract creation lands on the contract workspace rather than auto-printing.
+- The workspace provides an explicit PDF action and back navigation.
 
-## Important follow-up
-The screenshot showed `Erreur: 403` after submitting an inspection. The frontend previously hid the actual Nest `message`; this is now fixed. The next local test must capture the real message if a 403 still occurs. Do not infer the cause from status code alone.
+## Current local verification state
+- PostgreSQL running locally.
+- `pnpm db:start` reports already running on `:5432`.
+- `pnpm db:migrate` previously completed through 0009; after this new 0010 commit, the local checkout must pull and run `pnpm db:migrate` before retesting signing.
+- Do not reset/delete `.pgdata` for this fix.
+
+## Next exact test
+1. Pull the latest branch tip containing `5351ed9`.
+2. Run `pnpm db:migrate` to apply 0010.
+3. Restart `START_LOCAOS.bat`.
+4. Return to the existing DRAFT contract.
+5. Try signing again.
+6. If signing succeeds, continue deposit → READY → activation.
 
 ## Next UX work
-1. Local retest after pulling the latest branch tip.
-2. If inspection now succeeds, continue the forward rental chain.
+1. Verify contract signing after migration 0010.
+2. Continue the forward rental chain.
 3. Add phone country-code selection + E.164 normalization without inferring nationality.
 4. Add optional email domain completion; email remains non-obligatory.
 5. Design structured digital contract completion fields only where they materially improve operations; retain paper-completion fallback.
