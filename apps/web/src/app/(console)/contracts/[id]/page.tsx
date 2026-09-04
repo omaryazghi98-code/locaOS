@@ -30,6 +30,10 @@ export default async function ContractDetail({ params }: { params: Promise<{ id:
   return (
     <div>
       <div className="topbar"><div>
+        <div className="btnrow" style={{ marginBottom: 6 }}>
+          {d.reservation && <a className="btn mini" href={`/reservations/${d.reservation.id}`}>← Retour à la réservation</a>}
+          {!d.reservation && <a className="btn mini" href="/contracts">← Retour aux contrats</a>}
+        </div>
         <h1>Contrat #{String(c.number).padStart(5, '0')} <span className={`pill ${c.status === 'ACTIVE' ? 'ok' : c.status === 'BLANK_ISSUED' ? 'warn' : 'info'}`}>{c.status}</span></h1>
         <div className="sub">Langue {c.language.toUpperCase()} · Réservation {d.reservation?.reference ?? '—'} · Période {fmt(c.periodStart)} → {fmt(c.periodEnd)}</div>
       </div>
@@ -39,6 +43,15 @@ export default async function ContractDetail({ params }: { params: Promise<{ id:
       </div>
 
       {c.voidedReason && <div className="alert CRITICAL"><div className="t">Contrat annulé</div><div className="m">{c.voidedReason}</div></div>}
+
+      <div className="card" style={{ marginBottom: 10 }}>
+        <h2 style={{ marginTop: 0 }}>Préparation avant impression</h2>
+        <div className="sub">Les informations connues sont préremplies. Les champs qui ne sont pas encore disponibles dans locaOS restent volontairement vierges sur le PDF et peuvent être complétés au stylo sur le contrat papier.</div>
+        <div className="sub" style={{ marginTop: 8 }}>À compléter si nécessaire : CIN / passeport, permis, date de délivrance, date de naissance, adresse, mode et date de consignation de la caution, franchise/CDW, autorisation de sortie du territoire, forfait kilométrique, conducteurs additionnels et signatures/consentements.</div>
+        <div className="btnrow" style={{ marginTop: 10 }}>
+          <a className="btn mini" href={`/api/contracts/${c.id}/pdf`} target="_blank" rel="noreferrer">Imprimer le contrat à compléter</a>
+        </div>
+      </div>
 
       <div className="grid cols2">
         <div>
