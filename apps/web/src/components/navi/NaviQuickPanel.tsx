@@ -1,7 +1,6 @@
 'use client';
 
-import { useEffect, useMemo } from 'react';
-import { usePathname } from 'next/navigation';
+import { useMemo } from 'react';
 import { RefreshCw, X } from 'lucide-react';
 import { useNaviData } from '@/lib/navi/useNaviData';
 import { briefCounts, deriveAttention, derivePipeline } from '@/lib/navi/derive';
@@ -11,14 +10,9 @@ import { NaviCommandInput } from './NaviCommandInput';
 import { PanelState } from './primitives';
 
 export function NaviQuickPanel({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const path = usePathname();
   const lang = useLocale();
   const t = naviCopy(lang);
   const { data, reloadAll, refreshing, meta } = useNaviData();
-
-  useEffect(() => {
-    if (open) onClose();
-  }, [path]);
 
   const center = data.center.data;
   const focus = data.focus.data;
