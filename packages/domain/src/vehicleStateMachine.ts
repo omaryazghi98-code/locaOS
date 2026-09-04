@@ -36,6 +36,7 @@ export const TRANSITIONS: readonly TransitionRule[] = [
   { from: 'INSPECTED', to: 'MAINTENANCE', actors: ['OPS_SERVICE'], reasonRequired: true, note: 'Preparation maintenance starts' },
   { from: 'INSPECTED', to: 'AVAILABLE', actors: ['OPS_SERVICE'], reasonRequired: true, note: 'Post-return gate complete' },
   { from: 'CLEANING', to: 'AVAILABLE', actors: ['OPS_SERVICE'], reasonRequired: true, note: 'Preparation complete / QA passed' },
+  { from: 'MAINTENANCE', to: 'AVAILABLE', actors: ['OPS_SERVICE'], reasonRequired: true, note: 'Maintenance complete / QA passed' },
   { from: 'ANY', to: 'MAINTENANCE', actors: ['USER', 'SCHEDULER'], reasonRequired: true },
   { from: 'ANY', to: 'IMMOBILIZED', actors: ['USER'], reasonRequired: true, note: 'Hold / seizure (Fourrière)' },
   { from: 'ANY', to: 'ACCIDENT', actors: ['USER'], reasonRequired: true },
