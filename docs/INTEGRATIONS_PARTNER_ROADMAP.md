@@ -4,6 +4,8 @@
 
 locaOS is Morocco-first, so integrations are part of the product architecture rather than a list of one-off API calls. The goal is to connect authoritative rental operations to payments, communications, mobility, travel, fleet telemetry, compliance and partner benefits without creating a second source of truth.
 
+The long-term direction is larger than rental SaaS: **locaOS should become the operational infrastructure connecting rental agencies with the wider Moroccan tourism, mobility and local-service ecosystem.** Hotels/riads, airport services, activities, restaurants and other tourism partners can become distribution and service channels for rental inventory and customer benefits, while locaOS remains the authoritative operational layer underneath.
+
 This document is a roadmap and architecture boundary. A provider appearing here does **not** mean that a public API, commercial agreement, institutional authorization or production access currently exists.
 
 ## Integration classes
@@ -280,8 +282,56 @@ Partnership targets:
 - airport parking/meet-and-greet
 - transfer providers
 - hotels
+- riads
+- hotel groups
 - tourism operators
 - concierge/activities providers
+
+### Tourism distribution vision
+
+Hotels and riads are not only integration endpoints; they can become **distribution channels for locaOS-powered mobility**.
+
+Example future flow:
+
+```text
+Tourist books Marrakech riad/hotel
+        |
+ hotel/riad website or concierge
+        |
+ "Rent a car powered by locaOS"
+        |
+ locaOS rental availability / booking
+        |
+ vehicle + delivery location
+        |
+ dispatch task created
+        |
+ driver/agency/service provider
+        |
+ vehicle delivered to hotel
+        |
+ customer itinerary / NAVI
+        |
+ rental + tourism partner benefits
+```
+
+The hotel does not need to become a rental-management system. It can expose a mobility offer while locaOS handles the authoritative reservation, vehicle, contract, payment, dispatch and operational lifecycle.
+
+The long-term objective is a two-sided ecosystem:
+
+```text
+Tourism demand
+(hotels / riads / concierge / activities)
+                 |
+                 v
+             locaOS
+                 ^
+                 |
+Mobility supply
+(rental agencies / fleets / service partners)
+```
+
+This creates a path from agency SaaS to **B2B tourism + mobility infrastructure** without requiring the rental agency to abandon its operational authority.
 
 ---
 
@@ -531,19 +581,59 @@ Accounting integrations consume authoritative invoices, payments, refunds, depos
 
 Potential partners:
 
-### Hotels
+### Hotels / riads / accommodation
 
 - Booking.com
 - Expedia
 - Hotelbeds
 - Agoda
-- direct hotel/group partnerships
+- direct hotel/riad/group partnerships
+- hotel PMS/channel-manager ecosystems where commercially and technically available
 
-### Activities
+### Activities / tourism
 
 - GetYourGuide
 - Viator
 - Moroccan activity/tour operators
+- concierge networks
+- airport transfer operators
+
+### Accommodation-to-rental use cases
+
+A future hotel/riad partner should be able to:
+
+- offer locaOS-powered rental cars from its website, booking flow or concierge desk
+- request a car for a guest without becoming a rental back office
+- specify hotel/riad delivery and collection location
+- create or request a dispatch task
+- receive delivery/collection status
+- attach the booking to a guest/customer where permitted
+- issue eligible partner benefits
+- earn a partner commission or revenue share where commercially agreed
+- provide a rental upsell during the tourism booking journey
+
+### Tourist itinerary / NAVI vision
+
+For an opted-in tourist, NAVI can eventually unify the trip context:
+
+```text
+Hotel / riad booking
+       +
+Flight / airport information
+       +
+Rental reservation
+       +
+Vehicle delivery
+       +
+Activities / partner bookings
+       +
+Mobility benefits
+       |
+       v
+   NAVI itinerary
+```
+
+NAVI should be an **operational and planning intelligence layer**, not an autonomous booking authority. External bookings and partner data remain evidence/inputs; authoritative rental state remains in locaOS.
 
 ### Local partner benefits
 
@@ -558,6 +648,83 @@ Potential partners:
 - transport
 
 The partner-benefit ledger already defined in the loyalty roadmap is the normalized internal model.
+
+---
+
+# Phase 13 — Tourism network / B2B marketplace endgame
+
+This is the strategic expansion after the rental operational core and partner infrastructure are mature.
+
+## Two-sided network
+
+### Demand side
+
+- hotels
+- riads
+- hotel groups
+- travel agencies
+- tour operators
+- concierge desks
+- airport/transfer partners
+- activity providers
+
+### Supply side
+
+- rental agencies
+- fleets
+- lavage/detailing partners
+- garages
+- roadside providers
+- drivers/dispatch providers
+- mobility partners
+
+locaOS becomes the orchestration layer between these sides.
+
+## Cross-ecosystem loyalty
+
+Because locaOS can hold the relationship context across customer, rental and partner benefits, a future loyalty network can support cross-ecosystem rewards.
+
+Example:
+
+```text
+Customer rents car
+      |
+      v
+Earns loyalty value
+      |
+      +----> hotel benefit
+      +----> restaurant benefit
+      +----> activity voucher
+      +----> Afriquia fuel benefit
+      +----> Jawaz mobility credit
+```
+
+The loyalty/benefit ledger remains separate from the rental payment ledger. Partner funding, agency cost, issuance, redemption and reconciliation remain explicit.
+
+## Transaction-network vision
+
+The strategic end state is not merely “more integrations.” It is a network where locaOS can orchestrate legitimate mobility/tourism transactions while preserving authoritative records, partner settlement and auditability.
+
+```text
+Tourist
+   |
+   v
+Hotel / Riad / Travel Partner
+   |
+   v
+locaOS
+   |
+   +--> Rental agency / vehicle
+   +--> Dispatch / delivery
+   +--> GPS / fleet
+   +--> Payments
+   +--> Fuel / Jawaz
+   +--> Activities / restaurants
+   +--> Service partners
+   +--> NAVI itinerary
+```
+
+This is the **endgame**, not a claim that all of these integrations exist today.
 
 ---
 
@@ -580,7 +747,7 @@ The partner-benefit ledger already defined in the loyalty roadmap is the normali
 | P3 | NARSA/institutional access | High value but authorization-dependent |
 | P3 | Insurance/claims | Enterprise maturity |
 | P3 | Accounting APIs | After export/reconciliation is proven |
-| P3 | Hotels/activities/travel marketplace | Expansion after rental core is pilot-ready |
+| P3 | Hotels/riads/activities/travel marketplace | Tourism distribution and ecosystem expansion after rental core is pilot-ready |
 | P3 | OEM/advanced telematics | Advanced fleet intelligence |
 
 ---
@@ -646,7 +813,18 @@ The order is intentionally **not** “integrate every partner.”
 19. Insurance/assistance.
 20. Accounting synchronization.
 21. OEM/advanced telematics.
-22. Hotels/activities/other partner marketplace.
+22. Hotels/riads/activities/travel marketplace.
+
+### E. Tourism network endgame
+
+23. Hotel/riad partner distribution interface.
+24. Guest rental request/booking handoff.
+25. Hotel/riad delivery and collection dispatch tasks.
+26. Partner commission/revenue-share model.
+27. Tourism partner benefit exchange.
+28. NAVI trip/itinerary layer combining authorized travel, rental and mobility context.
+29. Cross-ecosystem loyalty and partner-funded rewards.
+30. B2B tourism/mobility marketplace orchestration.
 
 ## Definition of DONE
 
