@@ -141,7 +141,7 @@ export default function Shell({ children, user, agency, role }: { children: Reac
         </aside>
         <main id="app-content" className="main">{children}</main>
       </div>
-      <NaviQuickPanel open={naviQuickOpen && path !== '/navi'} onClose={() => setNaviQuickOpen(false)} />
+      {naviQuickOpen && path !== '/navi' && <NaviQuickPanel open onClose={() => setNaviQuickOpen(false)} />}
     </>
   );
 }
