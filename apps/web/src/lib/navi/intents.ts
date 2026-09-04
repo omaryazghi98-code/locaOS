@@ -96,6 +96,23 @@ export function route(query: string, ctx: Ctx): Answer {
 
   const has = (...keys: string[]) => keys.some((k) => q.includes(norm(k)));
 
+  // ── Explicit overdue vehicles
+  // This must run before the broad fleet matcher because queries such as
+  // "Quels véhicules sont en retard ?" contain "vehicule" and would otherwise
+  // be classified as a fleet overview.
+  if (has('retard', 'overdue', 'en retard', 'late', 'متأخر')) {
+    const overdue = ctx.center?.wrong.overdue ?? [];
+    return {
+      intent: 'overdue', empty: overdue.length === 0,
+      answer: overdue.length === 0
+        ? (lang === 'ar' ? 'لا توجد مركبات متأخرة.' : lang === 'en' ? 'No vehicles are overdue.' : 'Aucun véhicule en retard.')
+        : `${overdue.length} ${overdue.length === 1 ? t.briefLede.overdue : t.briefLede.overduePl}.`,
+      evidence: overdue.map((v) => ({ text: `${v.plate} · ${t.attention.whyOverdue}`, href: `/fleet` })),
+      related: overdue.map((v) => ({ label: v.plate, href: `/fleet`, status: 'OVERDUE' })),
+      actions: [{ label: t.fleet.open, href: '/fleet', primary: true }, { label: t.attention.seeAlerts, href: '/alerts' }],
+    };
+  }
+
   // ── What needs attention
   if (has('attention', 'urgent', 'priorit', 'اهتمام', 'important', 'wrong', 'mal')) {
     const top = ctx.attention.slice(0, 6);
