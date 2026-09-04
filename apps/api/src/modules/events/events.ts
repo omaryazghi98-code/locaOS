@@ -16,6 +16,14 @@ export type DomainEventMap = {
   ReservationConflictRejected: { vehicleId: string | null; pickupAt: string; returnAt: string; conflictType: 'RESERVATION' | 'MAINTENANCE' };
   QuoteBelowFloor: { reservationId: string; reference: string; dailyRate: string; floor: string };
   ContractSigned: { contractId: string; number: string; language: string };
+  ContractClosed: {
+    contractId: string;
+    number: string;
+    reservationId: string;
+    vehicleId: string;
+    vehicleStatus: string;
+    returnInspectionId: string;
+  };
   BlankContractIssued: { contractId: string; number: string };
   BlankContractReconciled: { contractId: string; number: string };
   ContractVoided: { contractId: string; number: string; reason: string };

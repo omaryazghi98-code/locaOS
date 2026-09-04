@@ -1,6 +1,6 @@
 'use client';
 // Field PWA — offline-first inspection workflow (< 60 s target; evidence quality first).
-// Outbox in localStorage replays idempotently (clientUuid) when connectivity returns.
+// Agents work from reservation references and plates; UUIDs remain internal identifiers.
 import { useCallback, useEffect, useState } from 'react';
 
 const CHECKLIST = ['roueSecours', 'triangle', 'extincteur', 'gilets', 'cleRoue', 'autoradio', 'tapis', 'clim'];
@@ -10,6 +10,7 @@ const CHECK_LABELS: Record<string, string> = {
 };
 
 interface Queued { clientUuid: string; payload: unknown; at: string }
+interface Picker { reservationId: string; vehicleId: string; label: string; plate: string | null }
 
 function loadQueue(): Queued[] {
   try { return JSON.parse(localStorage.getItem('locaos:outbox') ?? '[]'); } catch { return []; }
@@ -23,7 +24,7 @@ async function flushQueue(log: (s: string) => void) {
       const res = await fetch('/api/inspections', {
         method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(item.payload),
       });
-      if (res.ok || res.status === 400) { // 400: duplicate clientUuid already stored
+      if (res.ok || res.status === 400) {
         saveQueue(loadQueue().filter((x) => x.clientUuid !== item.clientUuid));
         log(`Synchronisé (${item.clientUuid.slice(0, 8)}…)`);
       }
@@ -31,9 +32,18 @@ async function flushQueue(log: (s: string) => void) {
   }
 }
 
+async function readApiError(res: Response): Promise<string> {
+  const out = await res.json().catch(() => null) as { error?: { message?: string }; message?: string | string[]; statusCode?: number } | null;
+  if (typeof out?.error?.message === 'string') return out.error.message;
+  if (Array.isArray(out?.message)) return out.message.join(', ');
+  if (typeof out?.message === 'string') return out.message;
+  return `Erreur HTTP ${res.status}`;
+}
+
 export default function FieldPage() {
   const [startedAt, setStartedAt] = useState<string | null>(null);
-  const [pickers, setPickers] = useState<{ reservationId: string; vehicleId: string; label: string }[]>([]);
+  const [pickers, setPickers] = useState<Picker[]>([]);
+  const [resolvedLabel, setResolvedLabel] = useState<string | null>(null);
   const [form, setForm] = useState({ vehicleId: '', reservationId: '', kind: 'DEPARTURE', mileageKm: '', fuelLevelPct: '100', customerAckName: '', notes: '' });
   const [checklist, setChecklist] = useState<Record<string, boolean>>({});
   const [damages, setDamages] = useState<{ zoneCode: string; severity: string; description: string }[]>([]);
@@ -43,20 +53,40 @@ export default function FieldPage() {
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    setForm((f) => ({ ...f, reservationId: params.get('reservationId') ?? '', kind: params.get('kind') ?? 'DEPARTURE' }));
-    // prefill from today's departures so no UUID is ever typed by hand
+    const reservationId = params.get('reservationId') ?? '';
+    const kind = params.get('kind') ?? 'DEPARTURE';
+    setForm((f) => ({ ...f, reservationId, kind }));
+
     (async () => {
       try {
+        const detail = reservationId
+          ? await fetch(`/api/reservations/${reservationId}`).then((r) => r.ok ? r.json() : null)
+          : null;
+        if (detail?.reservation?.vehicleId) {
+          const plate = detail.vehicle?.plate ?? null;
+          const customer = detail.customer ? `${detail.customer.firstName ?? ''} ${detail.customer.lastName ?? ''}`.trim() : '';
+          const label = `${detail.reservation.reference}${customer ? ` — ${customer}` : ''}${plate ? ` · ${plate}` : ''}`;
+          setResolvedLabel(label);
+          setForm((f) => ({ ...f, reservationId, vehicleId: detail.reservation.vehicleId }));
+        }
+
         const t = await fetch('/api/ops/today').then((r) => r.json());
         const deps = (t.departures ?? []).map((d: { reservation: { id: string; reference: string; vehicleId: string | null }; customerName: string; plate: string | null }) => ({
           reservationId: d.reservation.id, vehicleId: d.reservation.vehicleId ?? '',
-          label: `${d.reservation.reference} — ${d.customerName} ${d.plate ? '· ' + d.plate : ''}`,
-        })).filter((x: { vehicleId: string }) => x.vehicleId);
+          plate: d.plate ?? null,
+          label: `${d.reservation.reference} — ${d.customerName}${d.plate ? ' · ' + d.plate : ''}`,
+        })).filter((x: Picker) => x.vehicleId);
         setPickers(deps);
-        const pre = deps.find((x: { reservationId: string }) => x.reservationId === params.get('reservationId'));
-        if (pre) setForm((f) => ({ ...f, vehicleId: pre.vehicleId }));
-      } catch { /* offline: manual entry fallback */ }
+        if (!reservationId) {
+          const pre = deps[0];
+          if (pre) setForm((f) => ({ ...f, reservationId: pre.reservationId, vehicleId: pre.vehicleId }));
+        }
+      } catch {
+        // A directly opened reservation may still be usable from a cached/local URL state;
+        // never fall back to asking an agent for an internal UUID.
+      }
     })();
+
     setOnline(navigator.onLine);
     const on = () => { setOnline(true); void flushQueue((s) => setStatus((x) => [s, ...x].slice(0, 5))); setQueueLen(loadQueue().length); };
     const off = () => setOnline(false);
@@ -68,12 +98,12 @@ export default function FieldPage() {
   const log = useCallback((s: string) => setStatus((x) => [s, ...x].slice(0, 5)), []);
 
   const submit = async () => {
-    if (!form.vehicleId || !form.mileageKm) { log('Véhicule et kilométrage obligatoires'); return; }
+    if ((!form.vehicleId && !form.reservationId) || !form.mileageKm) { log('Réservation/véhicule affecté et kilométrage obligatoires'); return; }
     const clientUuid = crypto.randomUUID();
     const startedAtIso = startedAt ?? new Date().toISOString();
     const payload = {
       clientUuid, kind: form.kind,
-      vehicleId: form.vehicleId,
+      ...(form.vehicleId ? { vehicleId: form.vehicleId } : {}),
       reservationId: form.reservationId || undefined,
       startedAt: startedAtIso,
       mileageKm: Number(form.mileageKm), fuelLevelPct: Number(form.fuelLevelPct),
@@ -88,13 +118,16 @@ export default function FieldPage() {
     } else {
       try {
         const res = await fetch('/api/inspections', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload) });
-        const out = await res.json();
-        const seconds = Math.round((Date.now() - new Date(startedAtIso).getTime()) / 1000);
-        if (res.ok) { log(`Inspection enregistree${out.duplicate ? ' (doublon ignore)' : ''} en ${seconds}s`); }
-        else { log(`Erreur: ${out?.error?.message ?? res.status}`); }
+        if (res.ok) {
+          const out = await res.json();
+          const seconds = Math.round((Date.now() - new Date(startedAtIso).getTime()) / 1000);
+          log(`Inspection enregistrée${out.duplicate ? ' (doublon ignoré)' : ''} en ${seconds}s`);
+          setStartedAt(null); setChecklist({}); setDamages([]); setForm((f) => ({ ...f, mileageKm: '', customerAckName: '', notes: '' }));
+        } else {
+          log(`Erreur: ${await readApiError(res)}`);
+        }
       } catch { saveQueue([...loadQueue(), { clientUuid, payload, at: new Date().toISOString() }]); setQueueLen(loadQueue().length); log('Hors ligne — mis en file'); }
     }
-    setStartedAt(null); setChecklist({}); setDamages([]); setForm((f) => ({ ...f, mileageKm: '', customerAckName: '', notes: '' }));
   };
 
   return (
@@ -103,7 +136,10 @@ export default function FieldPage() {
         <h1>Terrain — inspection</h1>
         <div className="sub">Mode hors ligne prêt. Objectif &lt; 60 s — sans sacrifier les preuves photo.</div>
       </div>
-        <span className={`pill ${online ? 'ok' : 'danger'}`}>{online ? 'en ligne' : 'hors ligne'}</span>
+        <div className="btnrow">
+          {form.reservationId && <a className="btn mini" href={`/reservations/${form.reservationId}`}>← Retour à la réservation</a>}
+          <span className={`pill ${online ? 'ok' : 'danger'}`}>{online ? 'en ligne' : 'hors ligne'}</span>
+        </div>
       </div>
 
       <div className="card" style={{ maxWidth: 640 }}>
@@ -114,17 +150,21 @@ export default function FieldPage() {
               <select value={form.kind} onChange={(e) => setForm({ ...form, kind: e.target.value })}>
                 <option value="DEPARTURE">Départ</option><option value="RETURN">Retour</option>
               </select></div>
-            <div style={{ flex: 1.6 }}><label>Départ du jour (véhicule + réservation)</label>
-              <select onChange={(e) => {
-                const p = pickers.find((x) => x.reservationId === e.target.value);
-                setForm((f) => ({ ...f, reservationId: e.target.value, vehicleId: p?.vehicleId ?? f.vehicleId }));
-              }} value={form.reservationId}>
-                <option value="">— saisie manuelle —</option>
-                {pickers.map((p) => <option key={p.reservationId} value={p.reservationId}>{p.label}</option>)}
-              </select></div>
-            <div style={{ flex: 1.4 }}><label>ID véhicule {pickers.length ? '' : '(UUID — aucun départ trouvé)'}</label>
-              <input value={form.vehicleId} onChange={(e) => setForm({ ...form, vehicleId: e.target.value })} placeholder="UUID véhicule" /></div>
+            <div style={{ flex: 2.6 }}><label>Réservation / véhicule</label>
+              {resolvedLabel && form.reservationId ? (
+                <div className="sub" style={{ minHeight: 38, display: 'flex', alignItems: 'center' }}>{resolvedLabel}</div>
+              ) : (
+                <select onChange={(e) => {
+                  const p = pickers.find((x) => x.reservationId === e.target.value);
+                  setForm((f) => ({ ...f, reservationId: e.target.value, vehicleId: p?.vehicleId ?? '' }));
+                }} value={form.reservationId}>
+                  <option value="">— choisir une réservation —</option>
+                  {pickers.map((p) => <option key={p.reservationId} value={p.reservationId}>{p.label}</option>)}
+                </select>
+              )}
+            </div>
           </div>
+          {!form.vehicleId && <div className="sub" style={{ marginTop: 6 }}>Aucun véhicule affecté à cette réservation. Retournez à la réservation pour affecter un véhicule.</div>}
           <div className="row" style={{ gap: 8 }}>
             <div style={{ flex: 1 }}><label>Kilométrage</label><input inputMode="numeric" value={form.mileageKm} onChange={(e) => setForm({ ...form, mileageKm: e.target.value })} /></div>
             <div style={{ flex: 1 }}><label>Carburant %</label><input inputMode="numeric" value={form.fuelLevelPct} onChange={(e) => setForm({ ...form, fuelLevelPct: e.target.value })} /></div>

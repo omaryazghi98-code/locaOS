@@ -94,6 +94,11 @@ Legend:
 | WhatsApp booking automation | NEXT | Human handoff + explicit uncertainty |
 | Darija conversational layer | RESEARCH | Validate UX/privacy/provider approach |
 | Review/referral automation | NEXT | Post-rental workflow |
+| Loyalty / repeat-renter program | NEXT | Points, tiers, benefits or agency-defined rewards; must remain explainable and auditable |
+| Customer compensation / service recovery | NEXT | Credits, discounts, vouchers or benefits granted after incidents; approval and reason required |
+| Promotional gifts / partner perks | NEXT | Free gifts or partner benefits attached to a reservation/customer; inventory/eligibility/expiry tracking |
+| Partner benefit catalog | NEXT | Agency-managed partner offers, e.g. restaurant, activity, wash, SIM, fuel, toll or other local services |
+| Partner voucher issuance/redemption | NEXT | Track who issued, recipient, value/benefit, expiry, redemption and reconciliation |
 
 ## Commercial engine
 
@@ -106,10 +111,29 @@ Legend:
 | Long-stay pricing | NEXT | Productize discounts |
 | Event/holiday pricing | NEXT | Morocco-specific calendar/configuration |
 | Promotions/coupons | NEXT | After pricing core is stable |
+| Loyalty-linked pricing/benefits | NEXT | Benefits may reduce price or add included services; must be explicit and snapshot-able |
+| Compensation credits | NEXT | Non-cash credit/discount instrument with reason, approval and expiry policy |
+| Partner-funded promotions | NEXT | Track whether a benefit is agency-funded, partner-funded or co-funded |
 | Utilization analytics | PARTIAL | Command Center foundation |
 | Revenue analytics | PARTIAL | Expand reports |
 | Profitability analytics | NEXT | Revenue - expense - downtime |
 | Demand forecasting | NEXT | Advanced intelligence |
+
+## Customer benefits, partner offers and mobility credits
+
+| Capability | Status | Notes |
+|---|---|---|
+| Benefit / reward ledger | NEXT | Append-only grants, adjustments, redemptions and expirations; separate from payment ledger |
+| Benefit types | NEXT | Discount, free extra, voucher, gift, service, fuel credit, toll credit and partner offer |
+| Eligibility rules | NEXT | Reservation/customer/vehicle/date/channel conditions; no hidden automatic entitlement |
+| Manager approval for exceptional compensation | NEXT | Configurable threshold/role approval; reason mandatory |
+| Partner funding attribution | NEXT | Record partner contribution versus agency cost for profitability |
+| Fuel-card / fuel-credit benefit | NEXT | Track prepaid fuel value/card/voucher without treating it as rental payment unless actually used to settle a receivable |
+| Toll / Jawaz prepaid credit | NEXT | Record a prepaid Jawaz recharge or toll credit attached to a rental/customer/vehicle; track Pass identifier, amount, issuer/provider, evidence and redemption/consumption where available |
+| Afriquia prepaid fuel benefit | NEXT | Support Afriquia prepaid/rechargeable cards or vouchers for gasoline/diesel as a customer perk, compensation or promotion; provider/product terms must be verified before integration |
+| Other mobility partner credits | NEXT | Extensible provider-agnostic model for tolls, fuel, charging, parking or transport partners |
+| Benefit redemption / reconciliation | NEXT | Match issued value to redeemed/expired/refunded value and partner invoice/evidence |
+| Benefit reporting | NEXT | Cost to agency, partner-funded value, redemption rate, customer retention and campaign ROI |
 
 ## Fleet intelligence and integrations
 
@@ -125,6 +149,7 @@ Legend:
 | WhatsApp provider | PARTIAL | Adapter direction exists; credentials/provider integration pending |
 | Signature provider | PARTIAL | Provider port direction exists |
 | Accounting integrations | NEXT | Export first, API integrations later |
+| Partner benefit providers | NEXT | Provider adapters where APIs/settlement data exist; manual issuance must remain supported |
 
 ## UX, accessibility and language
 

@@ -1,13 +1,15 @@
-import { Body, ConflictException, Controller, ForbiddenException, BadRequestException, Get, NotFoundException, Param, ParseUUIDPipe, Post, Req, Query, UseGuards } from '@nestjs/common';
-import { and, desc, eq, gte, inArray, lt, sql } from 'drizzle-orm';
+import { Body, ConflictException, Controller, ForbiddenException, BadRequestException, Get, NotFoundException, Param, ParseUUIDPipe, Post, Req, UseGuards } from '@nestjs/common';
+import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { toMadEquivalent } from '@locaos/domain';
 import { withTenant } from '../../db/client';
-import { cashSessions, contracts, customers, deposits, depositCharges, inspections, payments, reservations, vehicles } from '../../db/schema';
+import { cashSessions, contracts, customers, deposits, depositCharges, inspections, payments, quotes, reservations, vehicles } from '../../db/schema';
 import { ZodValidationPipe } from '../common/zod.pipe.js';
 import { AuthGuard, AuthedRequest, PermissionsGuard, RequirePermission } from '../auth/guards.js';
 import { audit } from '../audit/audit.service.js';
-import { appendEvent, dispatchPending, dispatchPendingSafe } from '../events/events.js';
+import { appendEvent, dispatchPendingSafe } from '../events/events.js';
+import { assertDepositCoversRequiredAmount, assertDepositChargeWithinRemainingAmount } from './deposit.logic.js';
+import { assertDepositHandlingInput, resolveDepositCustody, type DepositHandling } from './deposit.policy.js';
 
 const PaymentSchema = z.object({
   direction: z.enum(['IN', 'OUT']).default('IN'),
@@ -28,7 +30,9 @@ const RefundSchema = PaymentSchema.omit({ method: true, direction: true }).exten
 const DepositSchema = z.object({
   contractId: z.string().uuid(),
   amount: z.string().regex(/^\d+(\.\d{1,2})?$/),
-  method: z.enum(['CASH_HELD', 'CARD_PREAUTH', 'BANK']),
+  method: z.enum(['CASH_HELD', 'CARD_PREAUTH', 'BANK', 'PARTNER', 'PAYMENT_PROVIDER']),
+  handling: z.enum(['DIRECT', 'PARTNER', 'CARD_PREAUTH']).default('DIRECT'),
+  provider: z.string().trim().min(1).max(80).optional(),
   providerRef: z.string().max(80).optional(),
   preauthExpiresAt: z.string().datetime().optional(),
 });
@@ -156,6 +160,31 @@ export class FinanceController {
       const locked = await tx.execute(sql`select id from contracts where id = ${body.contractId} and agency_id = ${req.ctx!.agencyId} for update`);
       if (!locked.rows.length) throw new NotFoundException('Contrat introuvable');
 
+      const contract = (await tx.select({ reservationId: contracts.reservationId }).from(contracts)
+        .where(and(eq(contracts.id, body.contractId), eq(contracts.agencyId, req.ctx!.agencyId))).limit(1))[0];
+      let requiredDeposit = 0n;
+      if (contract?.reservationId) {
+        const reservation = (await tx.select({ quoteId: reservations.quoteId }).from(reservations)
+          .where(and(eq(reservations.id, contract.reservationId), eq(reservations.agencyId, req.ctx!.agencyId))).limit(1))[0];
+        if (reservation?.quoteId) {
+          const quote = (await tx.select({ depositRequired: quotes.depositRequired }).from(quotes)
+            .where(and(eq(quotes.id, reservation.quoteId), eq(quotes.agencyId, req.ctx!.agencyId))).limit(1))[0];
+          requiredDeposit = quote?.depositRequired ?? 0n;
+        }
+      }
+      const amount = cents(body.amount);
+      assertDepositCoversRequiredAmount(amount, requiredDeposit);
+      assertDepositHandlingInput(body.handling as DepositHandling, body.provider);
+      if (body.handling === 'CARD_PREAUTH' && body.method !== 'CARD_PREAUTH') {
+        throw new BadRequestException('Une gestion par pré-autorisation exige la méthode CARD_PREAUTH');
+      }
+      if (body.handling === 'PARTNER' && !['PARTNER', 'PAYMENT_PROVIDER'].includes(body.method)) {
+        throw new BadRequestException('Une caution partenaire exige une méthode partenaire ou prestataire');
+      }
+      if (body.handling === 'DIRECT' && body.method === 'PARTNER') {
+        throw new BadRequestException('La méthode PARTNER exige une gestion PARTNER');
+      }
+
       const existing = await tx.select().from(deposits)
         .where(and(eq(deposits.contractId, body.contractId), inArray(deposits.status, ['PLANNED', 'HELD', 'PRE_AUTHORIZED', 'PARTIALLY_CHARGED'])))
         .limit(1);
@@ -166,23 +195,26 @@ export class FinanceController {
       }
 
       const inserted = await tx.insert(deposits).values({
-        agencyId: req.ctx!.agencyId, contractId: body.contractId, amount: cents(body.amount),
-        method: body.method, provider: body.method === 'CARD_PREAUTH' ? 'CMI_PLBS (saisie manuelle)' : null,
+        agencyId: req.ctx!.agencyId, contractId: body.contractId, amount,
+        method: body.method as never,
+        provider: body.provider ?? (body.method === 'CARD_PREAUTH' ? 'CMI_PLBS (saisie manuelle)' : null),
         providerRef: body.providerRef ?? null,
         preauthExpiresAt: body.preauthExpiresAt ? new Date(body.preauthExpiresAt) : null,
-        status: body.method === 'CARD_PREAUTH' ? 'PRE_AUTHORIZED' : 'PLANNED',
+        status: body.handling === 'CARD_PREAUTH' ? 'PRE_AUTHORIZED' : 'PLANNED',
         heldBy: req.ctx!.userId,
       }).returning();
-      if (body.method !== 'CARD_PREAUTH') {
+      const custody = resolveDepositCustody(body.handling as DepositHandling);
+      await tx.execute(sql`update deposits set handling = ${body.handling}, custody = ${custody} where id = ${inserted[0]!.id} and agency_id = ${req.ctx!.agencyId}`);
+      if (body.handling !== 'CARD_PREAUTH') {
         await tx.update(deposits).set({ status: 'HELD' }).where(eq(deposits.id, inserted[0]!.id));
       }
       await tx.update(contracts).set({ depositId: inserted[0]!.id, updatedAt: new Date() }).where(eq(contracts.id, body.contractId));
       await audit(tx, {
         agencyId: req.ctx!.agencyId, actor: { id: req.ctx!.userId, name: req.ctx!.fullName },
         entityType: 'deposit', entityId: inserted[0]!.id, action: 'DEPOSIT_CREATED',
-        after: { amount: body.amount, method: body.method },
+        after: { amount: body.amount, method: body.method, handling: body.handling, custody, provider: body.provider ?? null, requiredDeposit: (requiredDeposit / 100n).toString() },
       });
-      return { ...inserted[0], status: body.method === 'CARD_PREAUTH' ? 'PRE_AUTHORIZED' : 'HELD' };
+      return { ...inserted[0], handling: body.handling, custody, provider: body.provider ?? inserted[0]!.provider, status: body.handling === 'CARD_PREAUTH' ? 'PRE_AUTHORIZED' : 'HELD' };
     });
   }
 
@@ -191,14 +223,38 @@ export class FinanceController {
   async release(@Param('id', ParseUUIDPipe) id: string, @Body(new ZodValidationPipe(z.object({ reason: z.string().min(3).max(300) }))) body: { reason: string }, @Req() req: AuthedRequest) {
     const result = await withTenant(req.ctx!.agencyId, async (tx) => {
       const rows = await tx.select().from(deposits)
-        .where(and(eq(deposits.id, id), eq(deposits.agencyId, req.ctx!.agencyId))).limit(1);
+        .where(and(eq(deposits.id, id), eq(deposits.agencyId, req.ctx!.agencyId))).for('update').limit(1);
       if (!rows[0]) throw new NotFoundException('Caution introuvable');
       const d = rows[0];
       if (!['HELD', 'PRE_AUTHORIZED', 'PARTIALLY_CHARGED'].includes(d.status)) throw new ForbiddenException('Statut non libérable');
-      const contract = await tx.select().from(contracts).where(eq(contracts.id, d.contractId)).limit(1);
-      const ret = await tx.select().from(inspections)
-        .where(and(eq(inspections.contractId, d.contractId), eq(inspections.kind, 'RETURN'))).limit(1);
-      const returnInspectionExists = Boolean(ret[0]);
+
+      const contract = (await tx.select().from(contracts)
+        .where(and(eq(contracts.id, d.contractId), eq(contracts.agencyId, req.ctx!.agencyId))).limit(1))[0];
+      if (!contract) throw new NotFoundException('Contrat introuvable');
+      if (!contract.reservationId || !contract.vehicleId) {
+        throw new ConflictException({ error: { code: 'RETURN_FLOW_INCOMPLETE', message: 'Réservation et véhicule requis avant libération de la caution' } });
+      }
+      const reservation = (await tx.select().from(reservations)
+        .where(and(eq(reservations.id, contract.reservationId), eq(reservations.agencyId, req.ctx!.agencyId))).limit(1))[0];
+      if (!reservation || reservation.vehicleId !== contract.vehicleId) {
+        throw new ConflictException({ error: { code: 'RETURN_VEHICLE_MISMATCH', message: 'Le véhicule du contrat ne correspond pas à la réservation' } });
+      }
+      const vehicle = (await tx.select().from(vehicles)
+        .where(and(eq(vehicles.id, contract.vehicleId), eq(vehicles.agencyId, req.ctx!.agencyId))).limit(1))[0];
+      const ret = (await tx.select().from(inspections)
+        .where(and(
+          eq(inspections.agencyId, req.ctx!.agencyId),
+          eq(inspections.contractId, d.contractId),
+          eq(inspections.reservationId, contract.reservationId),
+          eq(inspections.vehicleId, contract.vehicleId),
+          eq(inspections.kind, 'RETURN'),
+        )).orderBy(desc(inspections.submittedAt)).limit(1))[0];
+      if (!ret || !vehicle || ['RENTED', 'OVERDUE', 'AWAITING_INSPECTION'].includes(vehicle.operationalStatus)) {
+        throw new ConflictException({
+          error: { code: 'RETURN_INSPECTION_REQUIRED', message: 'Inspection retour terminée obligatoire avant libération de la caution', vehicleStatus: vehicle?.operationalStatus ?? null },
+        });
+      }
+
       const updated = await tx.update(deposits).set({
         status: 'RELEASED', releasedBy: req.ctx!.userId, releasedAt: new Date(), releaseReason: body.reason, updatedAt: new Date(),
       }).where(eq(deposits.id, id)).returning();
@@ -208,10 +264,10 @@ export class FinanceController {
         before: { status: d.status }, after: { status: 'RELEASED' }, reason: body.reason,
       });
       await appendEvent(tx, req.ctx!.agencyId, 'DepositReleased', {
-        depositId: id, contractId: d.contractId, returnInspectionExists,
+        depositId: id, contractId: d.contractId, returnInspectionId: ret.id,
         reason: body.reason,
       });
-      return { ...updated[0], returnInspectionExists, contractNumber: contract[0]?.number };
+      return { ...updated[0], returnInspectionId: ret.id, contractNumber: contract.number };
     });
     dispatchPendingSafe();
     return result;
@@ -222,11 +278,15 @@ export class FinanceController {
   async charge(@Param('id', ParseUUIDPipe) id: string, @Body(new ZodValidationPipe(DepositChargeSchema)) body: z.infer<typeof DepositChargeSchema>, @Req() req: AuthedRequest) {
     return withTenant(req.ctx!.agencyId, async (tx) => {
       const rows = await tx.select().from(deposits)
-        .where(and(eq(deposits.id, id), eq(deposits.agencyId, req.ctx!.agencyId))).limit(1);
+        .where(and(eq(deposits.id, id), eq(deposits.agencyId, req.ctx!.agencyId))).for('update').limit(1);
       const d = rows[0];
       if (!d) throw new NotFoundException('Caution introuvable');
       if (!['HELD', 'PRE_AUTHORIZED', 'PARTIALLY_CHARGED'].includes(d.status)) throw new ForbiddenException('Caution non disponible');
       const amount = cents(body.amount);
+      const totalCharged = await tx.select({ sum: sql<string>`coalesce(sum(amount),0)` }).from(depositCharges).where(eq(depositCharges.depositId, id));
+      const charged = BigInt(totalCharged[0]?.sum ?? '0');
+      assertDepositChargeWithinRemainingAmount(d.amount, charged, amount);
+
       const paid = await tx.insert(payments).values({
         agencyId: req.ctx!.agencyId, direction: 'IN', method: 'CARD', purpose: 'DAMAGE',
         amount, currency: 'MAD', madEquivalent: amount, depositId: id, contractId: d.contractId,
@@ -236,14 +296,13 @@ export class FinanceController {
         agencyId: req.ctx!.agencyId, depositId: id, amount, reason: body.reason,
         damageId: body.damageId ?? null, approvedBy: req.ctx!.userId, paymentId: paid[0]!.id,
       }).returning();
-      const totalCharged = await tx.select({ sum: sql<string>`coalesce(sum(amount),0)` }).from(depositCharges).where(eq(depositCharges.depositId, id));
-      const charged = BigInt(totalCharged[0]?.sum ?? '0');
-      const newStatus = charged >= d.amount ? 'SETTLED' : 'PARTIALLY_CHARGED';
+      const newCharged = charged + amount;
+      const newStatus = newCharged >= d.amount ? 'SETTLED' : 'PARTIALLY_CHARGED';
       await tx.update(deposits).set({ status: newStatus, updatedAt: new Date() }).where(eq(deposits.id, id));
       await audit(tx, {
         agencyId: req.ctx!.agencyId, actor: { id: req.ctx!.userId, name: req.ctx!.fullName },
         entityType: 'deposit', entityId: id, action: 'DEPOSIT_CHARGED',
-        after: { amount: body.amount, reason: body.reason },
+        after: { amount: body.amount, reason: body.reason, totalCharged: newCharged.toString() },
       });
       return { charge: charge[0], payment: paid[0], depositStatus: newStatus };
     });
@@ -278,7 +337,7 @@ export class FinanceController {
       if (!open[0]) return { session: null, expectedMAD: 0n, cashPayments: [] };
       const session = open[0];
       const cashPayments = await tx.select().from(payments)
-        .where(and(eq(payments.cashSessionId, session.id))).orderBy(payments.receivedAt);
+        .where(eq(payments.cashSessionId, session.id)).orderBy(payments.receivedAt);
       const expected = session.openingBalance + cashPayments.reduce<bigint>((acc, p) =>
         acc + (p.direction === 'IN' ? (p.madEquivalent ?? p.amount) : -(p.madEquivalent ?? p.amount)), 0n);
       return { session, expectedMAD: expected, cashPayments };
@@ -362,4 +421,3 @@ export class FinanceController {
     });
   }
 }
-
