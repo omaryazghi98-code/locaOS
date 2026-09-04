@@ -163,6 +163,37 @@ export function route(query: string, ctx: Ctx): Answer {
     };
   }
 
+  // ── Available vehicles: specific list, before the broad fleet matcher.
+  if (has('disponible', 'disponibles', 'available', 'libre', 'libres', 'متاح')) {
+    const available = (ctx.vehicles ?? []).filter((v) => v.operationalStatus === 'AVAILABLE');
+    return {
+      intent: 'available', empty: available.length === 0,
+      answer: available.length === 0
+        ? (lang === 'ar' ? 'لا توجد مركبات متاحة.' : lang === 'en' ? 'No vehicles are available.' : 'Aucun véhicule disponible.')
+        : (lang === 'ar' ? `${available.length} مركبات متاحة.` : lang === 'en' ? `${available.length} ${available.length === 1 ? 'vehicle is' : 'vehicles are'} available.` : `${available.length} ${available.length === 1 ? 'véhicule disponible' : 'véhicules disponibles'}.`),
+      evidence: available.map((v) => ({
+        text: `${v.plate}${v.model ? ` · ${v.model.make} ${v.model.model} ${v.model.year}` : ''} · ${label(v.operationalStatus)}`,
+        href: `/fleet/${v.id}`,
+      })),
+      related: available.map((v) => ({ label: v.plate, href: `/fleet/${v.id}`, status: v.operationalStatus })),
+      actions: [{ label: t.fleet.open, href: '/fleet', primary: true }],
+    };
+  }
+
+  // ── Operations in progress: task-level answer, before generic navigation.
+  if (has('operation en cours', 'operations en cours', 'opérations en cours', 'active operations', 'operations in progress', 'in progress', 'taches en cours', 'tâches en cours', 'active tasks', 'مهام جارية', 'عمليات جارية')) {
+    const active = (ctx.tasks ?? []).filter((task) => OPEN_TASK_STATUSES.includes(task.status));
+    return {
+      intent: 'active-operations', empty: active.length === 0,
+      answer: active.length === 0
+        ? (lang === 'ar' ? 'لا توجد عمليات جارية.' : lang === 'en' ? 'No operations are in progress.' : 'Aucune opération en cours.')
+        : (lang === 'ar' ? `${active.length} عمليات جارية.` : lang === 'en' ? `${active.length} ${active.length === 1 ? 'operation is' : 'operations are'} in progress.` : `${active.length} ${active.length === 1 ? 'opération en cours' : 'opérations en cours'}.`),
+      evidence: active.map((task) => ({ text: `${task.plate} · ${task.title} · ${task.status} · ${task.priority}`, href: '/ops' })),
+      related: active.map((task) => ({ label: task.plate, href: `/fleet/${task.vehicle_id}`, status: task.status })),
+      actions: [{ label: t.pipeline.openOps, href: '/ops', primary: true }],
+    };
+  }
+
   // ── Fleet overview
   if (has('flotte', 'fleet', 'vehicule', 'vehicle', 'dispon', 'available', 'أسطول', 'متاح')) {
     const vs = ctx.vehicles ?? [];
