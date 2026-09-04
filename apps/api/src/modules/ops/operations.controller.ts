@@ -80,7 +80,7 @@ export class OperationsController {
   }
 
   @Post()
-  @RequirePermission('fleet:write')
+  @RequirePermission('ops:write')
   async create(@Body(new ZodValidationPipe(CreateSchema)) body: z.infer<typeof CreateSchema>, @Req() req: AuthedRequest) {
     return withTenant(req.ctx!.agencyId, async (tx) => {
       const result = await tx.execute(sql`
@@ -105,7 +105,7 @@ export class OperationsController {
   }
 
   @Post(':id/triage-return')
-  @RequirePermission('fleet:write')
+  @RequirePermission('ops:write')
   async triageReturn(@Param('id', ParseUUIDPipe) id: string, @Body(new ZodValidationPipe(TriageSchema)) body: z.infer<typeof TriageSchema>, @Req() req: AuthedRequest) {
     const result = await withTenant(req.ctx!.agencyId, async (tx) => {
       const found = await tx.execute(sql`
@@ -173,7 +173,7 @@ export class OperationsController {
   }
 
   @Post(':id/update')
-  @RequirePermission('fleet:write')
+  @RequirePermission('ops:write')
   async update(@Param('id', ParseUUIDPipe) id: string, @Body(new ZodValidationPipe(UpdateSchema)) body: z.infer<typeof UpdateSchema>, @Req() req: AuthedRequest) {
     const result = await withTenant(req.ctx!.agencyId, async (tx) => {
       const found = await tx.execute(sql`
