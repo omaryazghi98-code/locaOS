@@ -18,8 +18,8 @@ The first-class internal operations task/work-order foundation is implemented as
 8. Return triage can create cleaning and/or maintenance child tasks. If no additional work is required, the review task completion moves the vehicle to AVAILABLE through `OPS_SERVICE`.
 9. Completing the final cleaning/maintenance work creates a QA task when no post-return work remains.
 10. QA completion is the final operations release point: it verifies there are no open operations tasks and then moves `CLEANING` or `MAINTENANCE` to `AVAILABLE` through the authoritative vehicle transition service.
-11. The vehicle state machine now explicitly permits `MAINTENANCE → AVAILABLE` for `OPS_SERVICE` as well as the existing reasoned user path.
-12. Combined cleaning + maintenance triage is deliberately sequential. Maintenance cannot start while a return-cleaning task is open; once cleaning completes, the vehicle transitions `CLEANING → MAINTENANCE` and maintenance becomes the active operational phase.
+11. The vehicle state machine explicitly permits `MAINTENANCE → AVAILABLE` for `OPS_SERVICE` as well as the existing reasoned user path.
+12. Combined cleaning + maintenance triage is deliberately sequential. Maintenance does not start while a return-cleaning task remains open; once cleaning completes, the vehicle transitions `CLEANING → MAINTENANCE` and maintenance becomes the active operational phase.
 13. All task mutations in the new API are audited and emit operational events where implemented by the current operations flow.
 14. A dedicated `ops:write` permission was added. Owner, manager, agent, field agent, and mechanic receive it through migration `0012_operations_rls_permissions.sql`; accountant remains read-only.
 15. `operations_tasks` has a dedicated Drizzle schema definition in `apps/api/src/db/operations.schema.ts` while the hand-reviewed SQL migration remains authoritative for constraints/RLS.
@@ -60,6 +60,15 @@ The combined path is sequential rather than allowing the vehicle state to claim 
 5. Improve task-board assignment, vendor selection, scheduling, evidence capture, and task detail.
 6. Add external partner assignment/portal after the internal task lifecycle is stable.
 7. Add targeted automated coverage for: blocked direct `INSPECTED → AVAILABLE`; clean triage release; maintenance → QA → available; combined cleaning → maintenance ordering; QA blocked by open work; and tenant isolation.
+
+## Checkpoint — 2026-09-04 04:01 +01:00
+
+- Maintenance release semantics are now implemented in the authoritative state machine for `OPS_SERVICE`.
+- `CLEANING → MAINTENANCE` is explicitly allowed for the sequential combined-work path.
+- The operations controller uses QA as the final release gate and transitions maintenance to AVAILABLE through `OPS_SERVICE` only after no open post-return tasks remain.
+- The handoff has been updated to reflect the implemented lifecycle rather than the previous provisional maintenance limitation.
+- PR #16 remains draft/open and unmerged. Latest recorded head: `e970e805e9b1fec9306b679eb3db13aa3dd61439`.
+- No local test suite/CI run has been claimed. Repository inspection and source updates only.
 
 ## Safety
 
