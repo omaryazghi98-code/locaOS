@@ -162,6 +162,35 @@ AI browser automation. Potentially valuable for Moroccan/external portals lackin
 ### Startup credits
 Research legitimate current Google Cloud/AWS/Azure/GitHub/AI/startup programs and eligibility. Never architect around vendor credits. **Architecture first. Credits second.**
 
+## Newly recorded leads from 2026-09-07 screenshots
+
+These were supplied as additional discovery leads. **Do not treat social-post claims, stars, revenue figures or “free” claims as verified evidence. Verify each underlying project during deep research.**
+
+### Balsa UI — `balsa-ui/balsa-ui`
+Design-system and UI component registry positioned as a contract between a design system and AI coding agents. Potentially relevant to making NAVI/Codex-generated frontend changes conform to locaOS design-system rules. **HIGH-PRIORITY INVESTIGATE / ARCHITECTURE REFERENCE.**
+
+Research questions: registry format, component generation/distribution, framework support, agent integration, versioning, accessibility, licensing, whether it can coexist with our existing frontend/component architecture, and whether it reduces agent UI drift enough to justify adoption.
+
+### OmniRoute — `diegosouzagw/OmniRoute`
+AI model/provider routing layer shown as connecting coding tools to many model providers and switching when quotas are exhausted. Potential founder/developer infrastructure for reducing provider lock-in and handling usage limits. **HIGH-PRIORITY INVESTIGATE / DEV TOOL.**
+
+Research questions: actual provider support, routing policy, context preservation, failure semantics, credentials/security, logging/privacy, model compatibility, cost, licensing, and whether it works cleanly with our GitHub/Codex workflow without adding fragile complexity. Do not make locaOS runtime depend on it.
+
+### HyperFrames — HeyGen
+Code-driven video generation using HTML/CSS/JS, aimed at landing pages, product demos, ads and social videos. Potentially useful for rapid locaOS product demos, launch assets and marketing automation. **MARKETING / FOUNDER TOOL — INVESTIGATE.**
+
+### OpenMotion — `openmotion.design`
+Motion-design workspace positioned as an AI-assisted alternative to hiring a motion designer. Potentially useful for product demos, launch videos and marketing assets. **MARKETING / FOUNDER TOOL — INVESTIGATE.**
+
+### CanvasUI — `canvasui.dev`
+Open-source library of HTML-in-canvas/WebGL creative components, framework-agnostic. Potentially useful for high-impact marketing/landing visuals or selected product experiences, but not automatically appropriate for the operational console. **DESIGN / MARKETING REFERENCE — INVESTIGATE.**
+
+### Tegaki — `gkurt.com/tegaki`
+Animated handwriting/stroke-data generation from fonts, with web framework integrations. Potentially useful for small product/marketing storytelling effects. **LOW-PRIORITY DESIGN TOOL / FUTURE.**
+
+### Fincept Terminal
+AI-powered financial/market intelligence terminal. Potential founder/company-finance utility, but little direct relevance to the rental operating system or NAVI architecture. **LOW PRIORITY / FOUNDER UTILITY.**
+
 ## Strategic ideas
 
 1. Voice NAVI.
@@ -170,6 +199,9 @@ Research legitimate current Google Cloud/AWS/Azure/GitHub/AI/startup programs an
 4. Secure browser agent for external evidence.
 5. Specialized NAVI capabilities only when benchmarks justify them.
 6. Private/local agency AI as a possible future selling point.
+7. AI-native design-system contracts so coding agents can modify the UI without uncontrolled visual drift.
+8. Model/provider routing as optional founder/developer infrastructure, not a product dependency.
+9. Programmatic product-demo and motion-content generation to reduce founder marketing bottlenecks.
 
 ## Priority matrix
 
@@ -181,6 +213,8 @@ Research legitimate current Google Cloud/AWS/Azure/GitHub/AI/startup programs an
 | QMD | 🔴 High | Evaluate |
 | browser-use | 🟠 High | Security/architecture study |
 | shadcn/improve | 🟠 High | Test |
+| **Balsa UI** | 🔴 High | Deep research / design-system-agent study |
+| **OmniRoute** | 🔴 High | Deep research / dev-tool experiment |
 | PipeCat | 🟠 Medium | Study |
 | AnythingLLM | 🟠 Medium | Compare |
 | CrewAI | 🟠 Medium | Study |
@@ -188,10 +222,15 @@ Research legitimate current Google Cloud/AWS/Azure/GitHub/AI/startup programs an
 | awesome-agent-skills | 🟡 Medium | Curate |
 | Archify | 🟡 Medium | Experiment |
 | Ponytail | 🟡 Medium | Selective experiment |
+| **HyperFrames** | 🟠 Medium | Marketing workflow test |
+| **OpenMotion** | 🟠 Medium | Marketing/motion workflow test |
+| **CanvasUI** | 🟡 Medium | Design/marketing experiment |
 | Postiz | 🟢 Later | Reference |
 | Fleetbase | 🟢 Later | Study models |
 | Unlimited-OCR | 🟠 Medium | Benchmark |
 | Mem0 | 🟡 Later | Compare |
+| Tegaki | 🟢 Later | Optional design/marketing utility |
+| Fincept Terminal | 🟢 Later | Founder/company-finance utility |
 | DocuSeal | 🟡 Later | Future integration |
 | Traccar | 🟡 Later | Future |
 | Temporal | 🟢 Deferred | Do not implement now |
@@ -215,6 +254,12 @@ Research AnythingLLM, OpenHuman, QMD and local inference infrastructure.
 
 ### 6 — AI Engineering Workforce
 Research improve, awesome-agent-skills, Ponytail, Archify, OpenWiki and similar tools for persistence across sessions, inspect-before-modify, architecture preservation, safe parallelization and verification.
+
+### 7 — AI-Native Product Design & Founder Content
+Research Balsa UI and adjacent agent-compatible design-system registries; separately evaluate HyperFrames, OpenMotion, CanvasUI and Tegaki for rapid product demos, launch content and marketing. Do not let marketing/design tooling dictate operational-console architecture.
+
+### 8 — AI Model/Provider Infrastructure
+Research OmniRoute and similar routing/proxy layers as optional developer infrastructure. Evaluate reliability, security, privacy, cost and context preservation before using them in the founder workflow.
 
 ## Research loop
 
@@ -310,13 +355,13 @@ The goal is not to collect cool repositories. **The goal is to discover architec
 >
 > Read `AI_HANDOFF_OPEN_SOURCE_RESEARCH.md` first and treat it as the current research checkpoint.
 >
-> Continuously research and deeply evaluate GitHub repositories, Reddit discussions, technical papers, products, agent frameworks, memory systems, browser automation tools, OCR systems, voice systems, workflow engines, developer-agent tooling, and other technologies that could materially improve locaOS/NAVI.
+> Continuously research and deeply evaluate GitHub repositories, Reddit discussions, technical papers, products, agent frameworks, memory systems, browser automation tools, OCR systems, voice systems, workflow engines, developer-agent tooling, design-system tooling, content-generation tooling, model-routing infrastructure, and other technologies that could materially improve locaOS/NAVI or the founder's ability to build and validate it.
 >
 > Do not blindly recommend dependencies. For every discovery: verify the project, inspect its current state and license, understand its architecture, identify the problem it solves, map that problem to locaOS/NAVI, compare it with what we already have, identify security/privacy/operational risks, and classify it as integrate / adapt / reference / benchmark / future / reject.
 >
-> Keep locaOS as the authoritative operational core and NAVI as the context/reasoning/orchestration layer. Never let an AI framework, graph database, vector database, browser agent, OCR system, or external SaaS become the source of operational truth.
+> Keep locaOS as the authoritative operational core and NAVI as the context/reasoning/orchestration layer. Never let an AI framework, graph database, vector database, browser agent, OCR system, design system, model router, or external SaaS become the source of operational truth.
 >
-> High-priority research leads currently include Graphiti, OpenHuman, Maka, QMD, browser-use, PipeCat, AnythingLLM, CrewAI, shadcn/improve, and selected agent-skill/documentation projects.
+> High-priority research leads currently include Graphiti, OpenHuman, Maka, QMD, browser-use, Balsa UI, OmniRoute, PipeCat, AnythingLLM, CrewAI, shadcn/improve, and selected agent-skill/documentation projects.
 >
 > Also investigate anything new I send from GitHub, Reddit, Instagram, articles, videos, papers, or other sources.
 >
