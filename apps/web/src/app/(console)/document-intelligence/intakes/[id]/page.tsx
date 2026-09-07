@@ -45,7 +45,7 @@ interface DocumentRow {
 export default async function DocumentIntakeReview({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const detail = await apiFetch<IntakeDetail>(`/api/document-intelligence/intakes/${id}`);
-  const docs = await apiFetch<DocumentRow[]>(`/api/documents?entityType=${encodeURIComponent(detail.intake.document_family === 'DRIVER_LICENSE' ? 'customer' : 'other')}`);
+  const docs = await apiFetch<DocumentRow[]>('/api/documents');
   const document = docs.find((d) => d.id === detail.intake.document_id);
 
   return (
