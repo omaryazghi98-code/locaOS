@@ -16,14 +16,13 @@ export interface Candidate {
   sourceFieldKey: string | null;
 }
 
-const DATE = /\b(\d{2}[./-]\d{2}[./-]\d{4}|\d{4}[./-]\d{2}[./-]\d{2})\b/;
 const LABELS = {
   licenseNumber: /(?:permis|license|licence|n[°o]|number|num[eé]ro)\s*[:#-]?\s*([A-Z0-9][A-Z0-9 .-]{2,39})/i,
   firstName: /(?:pr[eé]nom|first\s*name)\s*[:#-]?\s*([A-ZÀ-Ÿ][A-ZÀ-Ÿ' -]{1,79})/i,
   lastName: /(?:nom|surname|last\s*name)\s*[:#-]?\s*([A-ZÀ-Ÿ][A-ZÀ-Ÿ' -]{1,79})/i,
   dob: /(?:date\s*(?:de\s*)?naissance|date\s*of\s*birth|birth)\s*[:#-]?\s*(\d{2}[./-]\d{2}[./-]\d{4}|\d{4}[./-]\d{2}[./-]\d{2})/i,
   issue: /(?:date\s*(?:de\s*)?d[eé]livrance|date\s*(?:of\s*)?issue|issued)\s*[:#-]?\s*(\d{2}[./-]\d{2}[./-]\d{4}|\d{4}[./-]\d{2}[./-]\d{2})/i,
-  expiry: /(?:date\s*(?:d['’]?)?expiration|date\s*(?:of\s*)?expiry|expiry|expires)\s*[:#-]?\s*(\d{2}[./-]\d{2}[./-]\d{4}|\d{4}[./-]\d{2}[./-]\d{4})/i,
+  expiry: /(?:date\s*(?:d['’]?)?expiration|date\s*(?:of\s*)?expiry|expiry|expires)\s*[:#-]?\s*(\d{2}[./-]\d{2}[./-]\d{4}|\d{4}[./-]\d{2}[./-]\d{2})/i,
 };
 
 function candidate(value: string | null, confidence: number | null, sourceFieldKey: string | null): Candidate {
