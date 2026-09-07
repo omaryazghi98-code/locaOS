@@ -20,6 +20,9 @@ import {
   TransfersController, IntelligenceOpsController, ReportsController,
   Customer360Controller, DocumentsController, IntegrationsController, ComplianceController,
 } from './modules/intelligence/intelligence.controller.js';
+import { DocumentIntelligenceController } from './modules/document-intelligence/document-intelligence.controller.js';
+import { DocumentIntelligenceService } from './modules/document-intelligence/document-intelligence.service.js';
+import { PaddleOcrProvider } from './modules/document-intelligence/paddle-ocr.provider.js';
 
 @Module({
   controllers: [
@@ -28,9 +31,12 @@ import {
     AlertsController, FilesController, MaintenanceController, TelematicsController,
     TransfersController, IntelligenceOpsController, ReportsController, Customer360Controller,
     DocumentsController, IntegrationsController, ComplianceController,
+    DocumentIntelligenceController,
   ],
   providers: [
     AuthGuard, PermissionsGuard,
+    DocumentIntelligenceService,
+    { provide: 'OCR_PROVIDER', useClass: PaddleOcrProvider },
     { provide: APP_FILTER, useClass: AllExceptionsFilter },
   ],
 })

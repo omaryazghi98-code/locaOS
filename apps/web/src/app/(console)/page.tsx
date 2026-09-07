@@ -1,3 +1,5 @@
+import Link from 'next/link';
+import { cookies } from 'next/headers';
 import { UI_STRINGS } from '@locaos/domain/i18n';
 import { apiFetch } from '@/lib/api';
 
@@ -7,76 +9,25 @@ interface CC {
   willGoWrong: { branchMismatches: { id: string; reference: string; plate: string | null }[]; unassignedTomorrow: number; docsExpiring: { type: string; n: number }[]; pendingTransfers: number };
   actions: { priority: number; kind: string; label: string; href: string; reason: string }[];
 }
-
 const mad = (v?: string) => new Intl.NumberFormat('fr-MA').format(Number(v ?? 0) / 100) + ' MAD';
-
 export default async function CommandCenter() {
-  const c = await apiFetch<CC>('/api/ops/command-center');
-  const h = c.happening;
-  const cookieMatch = typeof document !== 'undefined' ? document.cookie.match(/(?:^|;\s*)locaos-lang=([^;]+)/) : null;
-  const lang = cookieMatch?.[1] === 'ar' ? 'ar' : cookieMatch?.[1] === 'en' ? 'en' : 'fr';
-  const dir = lang === 'ar' ? 'rtl' : 'ltr';
+  const [c, cookieStore] = await Promise.all([apiFetch<CC>('/api/ops/command-center'), cookies()]); const h = c.happening;
+  const rawLang = cookieStore.get('locaos-lang')?.value; const lang = rawLang === 'ar' || rawLang === 'en' ? rawLang : 'fr'; const dir = lang === 'ar' ? 'rtl' : 'ltr';
   const k = UI_STRINGS.COMMAND_KPIS;
-
-  const NO_ACTIONS = lang === 'ar' ? 'لا توجد إجراءات ذات أولوية' : lang === 'en' ? 'No priority actions' : 'Aucune action prioritaire';
-  const SEE_ALERTS = lang === 'ar' ? 'عرض التنبيهات' : lang === 'en' ? 'See alerts' : 'Voir les alertes';
-  const utilizationLabel = lang === 'ar' ? '% من الأسطول' : lang === 'en' ? '% of fleet' : '% de la flotte';
-  const priority1 = lang === 'ar' ? 'فورية' : lang === 'en' ? 'immediate' : 'immédiate';
-  const priority2 = lang === 'ar' ? 'اليوم' : lang === 'en' ? 'today' : "aujourd'hui";
-  const priority3 = lang === 'ar' ? 'هذا الأسبوع' : lang === 'en' ? 'this week' : 'cette semaine';
-  const operational = lang === 'ar' ? 'الحالة التشغيلية' : lang === 'en' ? 'Operational status' : 'Statut opérationnel';
-
-  return (
-    <div dir={dir}>
-      <div className="topbar"><div>
-        <h1>{UI_STRINGS.COMMAND_CENTER[lang] ?? UI_STRINGS.COMMAND_CENTER.fr}</h1>
-        <div className="sub">{UI_STRINGS.LOGIN[lang] ?? UI_STRINGS.LOGIN.fr}: Atlas Rent SARL (démo)</div>
-      </div></div>
-
-      <div className="grid cards">
-        <div className="card"><div className="k">{k.activeRentals[lang]}</div><div className="v">{h.activeRentals}</div><div className="sub">{h.utilizationPct}{utilizationLabel} ({h.fleetSize})</div></div>
-        <div className="card"><div className="k">{k.available[lang]}</div><div className="v ok">{h.available}</div></div>
-        <div className="card"><div className="k">{k.departuresReturns[lang]}</div><div className="v">{h.departuresToday} / {h.returnsToday}</div></div>
-        <div className="card"><div className="k">{k.revenue30[lang]}</div><div className="v">{mad(h.revenue30Mad)}</div></div>
-        <div className="card"><div className="k">{k.outstanding[lang]}</div><div className={Number(h.outstandingMad) > 0 ? 'warn v' : 'ok v'}>{mad(h.outstandingMad)}</div></div>
-      </div>
-
-      <div className="grid cols2">
-        <div>
-          <h2>{lang === 'ar' ? 'التنبيهات' : lang === 'en' ? 'Alerts' : 'Alertes'}</h2>
-          {c.wrong.overdue.length === 0 && c.wrong.unavailable.length === 0 && c.wrong.openCritical === 0 && <div className="sub">{lang === 'ar' ? 'لا يوجد شيء حرج. ✓' : lang === 'en' ? 'Nothing critical. ✓' : 'Rien de critique. ✓'}</div>}
-          {c.wrong.overdue.map((v) => <div key={v.id} className="alert CRITICAL"><div className="t">{lang === 'ar' ? `تأخير — ${v.plate}` : lang === 'en' ? `Overdue — ${v.plate}` : `Retard — ${v.plate}`}</div><div className="m">{lang === 'ar' ? 'العقد منتهٍ والسيارة لم تُعد' : lang === 'en' ? 'Contract expired; vehicle not returned' : 'Contrat échu, véhicule non restitué'}</div></div>)}
-          {c.wrong.unavailable.map((v) => <div key={v.id} className="alert ATTENTION"><div className="t">{v.plate} — {operational}: {v.status}</div></div>)}
-          {(c.wrong.openCritical > 0 || c.wrong.openHigh > 0) && (
-            <div className="alert ATTENTION"><div className="t">{c.wrong.openCritical} {lang === 'ar' ? 'حرج' : lang === 'en' ? 'CRITICAL' : 'CRITIQUE'} · {c.wrong.openHigh} {lang === 'ar' ? 'مرتفع' : lang === 'en' ? 'HIGH' : 'HAUTE'}</div><div className="m"><a href="/alerts">{SEE_ALERTS}</a></div></div>
-          )}
-
-          <h2>🔮 {lang === 'ar' ? 'ما الذي قد يسوء' : lang === 'en' ? 'What may go wrong' : 'Ce qui va mal tourner'}</h2>
-          {c.willGoWrong.branchMismatches.map((m) => (
-            <div key={m.id} className="alert ATTENTION"><div className="t">{m.plate} — {lang === 'ar' ? 'مطلوب في وكالة أخرى' : lang === 'en' ? 'Required at another branch' : 'Requis sur une autre agence'}</div><div className="m">{lang === 'ar' ? `الحجز ${m.reference} قريب · تحويل موصى به (تنفيذ بشري)` : lang === 'en' ? `Reservation ${m.reference} imminent · transfer recommended (human execution)` : `Réservation ${m.reference} imminente · transfert recommandé (exécution humaine)`}</div></div>
-          ))}
-          {c.willGoWrong.unassignedTomorrow > 0 && <div className="alert ATTENTION"><div className="t">{c.willGoWrong.unassignedTomorrow} {lang === 'ar' ? 'مغادرة خلال 48 ساعة بدون سيارة' : lang === 'en' ? 'departure(s) ≤48h without vehicle' : 'départ(s) ≤48h sans véhicule'}</div></div>}
-          {c.willGoWrong.docsExpiring.map((d) => <div key={d.type} className="alert ATTENTION"><div className="t">{d.n} {lang === 'ar' ? `وثيقة ${d.type} تنتهي خلال 30 يومًا` : lang === 'en' ? `${d.n} ${d.type} document(s) expire within 30 days` : `document(s) ${d.type} expirent sous 30 j`}</div></div>)}
-          {c.willGoWrong.pendingTransfers > 0 && <div className="sub">{c.willGoWrong.pendingTransfers} {lang === 'ar' ? 'تحويلات موصى بها معلقة — راجع اليوم.' : lang === 'en' ? "recommended transfer(s) pending — see Today's view." : "transfert(s) recommandé(s) en attente — voir Aujourd'hui."}</div>}
-          {c.willGoWrong.branchMismatches.length === 0 && c.willGoWrong.unassignedTomorrow === 0 && c.willGoWrong.docsExpiring.length === 0 && <div className="sub">{lang === 'ar' ? 'المخاطر المتوقعة: لا شيء مُبلّغ عنه.' : lang === 'en' ? 'Anticipated risk: nothing flagged.' : 'Risque anticipé : rien de signalé.'}</div>}
-        </div>
-
-        <div>
-          <h2>✅ {lang === 'ar' ? 'ماذا يجب أن نفعل (بالأولوية)' : lang === 'en' ? 'What to do (prioritized)' : 'Quoi faire (priorisé)'}</h2>
-          {c.actions.length === 0 && <div className="sub">{NO_ACTIONS}</div>}
-          {c.actions.map((a, i) => (
-            <div key={i} className={`alert ${a.priority === 1 ? 'CRITICAL' : 'ATTENTION'}`}>
-              <div className="t"><a href={a.href}>{a.label}</a></div>
-              <div className="m">{a.reason}</div>
-              <div className="sub">{lang === 'ar' ? 'الأولوية' : lang === 'en' ? 'Priority' : 'Priorité'} {a.priority === 1 ? priority1 : a.priority === 2 ? priority2 : priority3} · {a.kind}</div>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      <div className="sub" style={{ marginTop: 14 }}>
-        {lang === 'ar' ? 'الموجز المفصل' : lang === 'en' ? 'Detailed brief' : 'Brief détaillé'}: <a href="/brief?scope=morning">{lang === 'ar' ? 'الصباح' : lang === 'en' ? 'morning' : 'matin'}</a> · <a href="/brief?scope=eod">{lang === 'ar' ? 'نهاية اليوم' : lang === 'en' ? 'end of day' : 'fin de journée'}</a>.
-      </div>
+  const text = { fr: { alerts: 'Alertes', risks: 'Ce qui va mal tourner', riskHint: 'Risques déjà détectés par les règles opérationnelles.', actions: 'Quoi faire · priorisé', actionHint: 'Actions existantes, exécutées par leurs endpoints autoritatifs.', critical: 'CRITIQUE', high: 'HAUTE', nothing: 'Rien de critique. ✓', noRisk: 'Risque anticipé : rien de signalé.', noActions: 'Aucune action prioritaire', open: 'Ouvrir NAVI', navHint: 'NAVI est le centre opérationnel :', full: 'ouvrir la vue complète', pipeline: 'le pipeline post-retour, la flotte, les opérations et la timeline.' }, en: { alerts: 'Alerts', risks: 'What may go wrong', riskHint: 'Risks already detected by operational rules.', actions: 'What to do · prioritized', actionHint: 'Existing actions executed through their authoritative endpoints.', critical: 'CRITICAL', high: 'HIGH', nothing: 'Nothing critical. ✓', noRisk: 'Anticipated risk: nothing flagged.', noActions: 'No priority actions', open: 'Open NAVI', navHint: 'NAVI is the operational center:', full: 'open the full view', pipeline: 'the post-return pipeline, fleet, operations and timeline.' }, ar: { alerts: 'التنبيهات', risks: 'ما الذي قد يسوء', riskHint: 'مخاطر تم اكتشافها بالفعل بواسطة القواعد التشغيلية.', actions: 'ماذا يجب أن نفعل · حسب الأولوية', actionHint: 'إجراءات موجودة تُنفذ عبر واجهاتها المعتمدة.', critical: 'حرج', high: 'مرتفع', nothing: 'لا يوجد شيء حرج. ✓', noRisk: 'المخاطر المتوقعة: لا شيء مُبلّغ عنه.', noActions: 'لا توجد إجراءات ذات أولوية', open: 'فتح NAVI', navHint: 'NAVI هو المركز التشغيلي:', full: 'فتح العرض الكامل', pipeline: 'خط ما بعد الإرجاع، والأسطول، والعمليات، والخط الزمني.' } }[lang];
+  return <div className="navi" dir={dir}>
+    <div className="topbar"><div><div className="nv-eyebrow">LOCAOS · COMMAND CENTER</div><h1>{UI_STRINGS.COMMAND_CENTER[lang]}</h1><div className="sub">Atlas Rent SARL (démo)</div></div><Link className="btn mini primary" href="/navi">{text.open}</Link></div>
+    <section className="navi-grid-3">
+      <div className="nv-panel elev-2"><div className="nv-panel-head"><div><div className="nv-eyebrow">{lang === 'ar' ? 'التشغيل' : lang === 'en' ? 'Operations' : 'Exploitation'}</div><h2 className="nv-panel-title">{k.activeRentals[lang]}</h2></div></div><div className="nv-panel-body"><div className="nv-display nv-num">{h.activeRentals}</div><div className="nv-panel-hint">{h.utilizationPct}% {lang === 'ar' ? 'من الأسطول' : lang === 'en' ? 'of fleet' : 'de la flotte'} · {h.fleetSize} {lang === 'ar' ? 'مركبة' : lang === 'en' ? 'vehicles' : 'véhicules'}</div></div></div>
+      <div className="nv-panel"><div className="nv-panel-head"><div><div className="nv-eyebrow">{lang === 'ar' ? 'التوفر' : lang === 'en' ? 'Availability' : 'Disponibilité'}</div><h2 className="nv-panel-title">{k.available[lang]}</h2></div></div><div className="nv-panel-body"><div className="nv-display nv-num">{h.available}</div><div className="nv-panel-hint">{lang === 'ar' ? 'المركبات المتاحة الآن' : lang === 'en' ? 'Vehicles available now' : 'Véhicules disponibles maintenant'}</div></div></div>
+      <div className="nv-panel"><div className="nv-panel-head"><div><div className="nv-eyebrow">{lang === 'ar' ? 'اليوم' : lang === 'en' ? 'Today' : "Aujourd'hui"}</div><h2 className="nv-panel-title">{k.departuresReturns[lang]}</h2></div></div><div className="nv-panel-body"><div className="nv-display nv-num">{h.departuresToday} / {h.returnsToday}</div><div className="nv-panel-hint">{lang === 'ar' ? 'المغادرات / العودات' : lang === 'en' ? 'Departures / returns' : 'Départs / retours'}</div></div></div>
+    </section>
+    <section className="navi-two"><div className="nv-panel"><div className="nv-panel-head"><div><div className="nv-eyebrow">{lang === 'ar' ? 'المالية · 30 يومًا' : lang === 'en' ? 'Finance · 30 days' : 'Finance · 30 jours'}</div><h2 className="nv-panel-title">{k.revenue30[lang]}</h2></div></div><div className="nv-panel-body"><div className="nv-display nv-num">{mad(h.revenue30Mad)}</div></div></div><div className="nv-panel"><div className="nv-panel-head"><div><div className="nv-eyebrow">{lang === 'ar' ? 'المالية · للتحصيل' : lang === 'en' ? 'Finance · outstanding' : 'Finance · à recouvrer'}</div><h2 className="nv-panel-title">{k.outstanding[lang]}</h2></div></div><div className="nv-panel-body"><div className={`nv-display nv-num ${Number(h.outstandingMad) > 0 ? 'warn' : 'ok'}`}>{mad(h.outstandingMad)}</div></div></div></section>
+    <div className="navi-grid">
+      <section className="nv-panel elev-2"><div className="nv-panel-head"><div><h2 className="nv-panel-title">{text.alerts}</h2><div className="nv-panel-hint">{lang === 'ar' ? 'ما يتطلب انتباهًا تشغيليًا.' : lang === 'en' ? 'What requires operational attention.' : 'Ce qui exige une attention opérationnelle.'}</div></div><Link className="nv-link" href="/alerts">{lang === 'ar' ? 'عرض التنبيهات' : lang === 'en' ? 'See alerts' : 'Voir les alertes'} ↗</Link></div><div className="nv-panel-body"><div className="navi-col">{c.wrong.overdue.length === 0 && c.wrong.unavailable.length === 0 && c.wrong.openCritical === 0 && <div className="sub">{text.nothing}</div>}{c.wrong.overdue.map((v) => <div key={v.id} className="alert CRITICAL"><div className="t">{lang === 'ar' ? `تأخير — ${v.plate}` : lang === 'en' ? `Overdue — ${v.plate}` : `Retard — ${v.plate}`}</div><div className="m">{lang === 'ar' ? 'العقد منتهٍ والسيارة لم تُعد' : lang === 'en' ? 'Contract expired; vehicle not returned' : 'Contrat échu, véhicule non restitué'}</div></div>)}{c.wrong.unavailable.map((v) => <div key={v.id} className="alert ATTENTION"><div className="t">{v.plate} — {lang === 'ar' ? 'الحالة التشغيلية' : lang === 'en' ? 'Operational status' : 'Statut opérationnel'} : {v.status}</div></div>)}{(c.wrong.openCritical > 0 || c.wrong.openHigh > 0) && <div className="alert ATTENTION"><div className="t">{c.wrong.openCritical} {text.critical} · {c.wrong.openHigh} {text.high}</div><div className="m"><Link href="/alerts">{lang === 'ar' ? 'عرض التنبيهات' : lang === 'en' ? 'See alerts' : 'Voir les alertes'}</Link></div></div>}</div></div></section>
+      <section className="nv-panel"><div className="nv-panel-head"><div><h2 className="nv-panel-title">{text.risks}</h2><div className="nv-panel-hint">{text.riskHint}</div></div></div><div className="nv-panel-body"><div className="navi-col">{c.willGoWrong.branchMismatches.map((m) => <div key={m.id} className="alert ATTENTION"><div className="t">{m.plate ?? (lang === 'ar' ? 'مركبة' : lang === 'en' ? 'Vehicle' : 'Véhicule')} — {lang === 'ar' ? 'مطلوب في وكالة أخرى' : lang === 'en' ? 'Required at another branch' : 'Requis sur une autre agence'}</div><div className="m">{lang === 'ar' ? `الحجز ${m.reference} قريب · تحويل موصى به (تنفيذ بشري)` : lang === 'en' ? `Reservation ${m.reference} imminent · transfer recommended (human execution)` : `Réservation ${m.reference} imminente · transfert recommandé (exécution humaine)`}</div></div>)}{c.willGoWrong.unassignedTomorrow > 0 && <div className="alert ATTENTION"><div className="t">{c.willGoWrong.unassignedTomorrow} {lang === 'ar' ? 'مغادرة خلال 48 ساعة بدون سيارة' : lang === 'en' ? 'departure(s) ≤48h without vehicle' : 'départ(s) ≤48h sans véhicule'}</div></div>}{c.willGoWrong.docsExpiring.map((d) => <div key={d.type} className="alert ATTENTION"><div className="t">{d.n} {lang === 'ar' ? `وثيقة ${d.type} تنتهي خلال 30 يومًا` : lang === 'en' ? `${d.n} ${d.type} document(s) expire within 30 days` : `document(s) ${d.type} expirent sous 30 j`}</div></div>)}{c.willGoWrong.pendingTransfers > 0 && <div className="sub">{c.willGoWrong.pendingTransfers} {lang === 'ar' ? 'تحويلات موصى بها معلقة' : lang === 'en' ? 'recommended transfer(s) pending' : 'transfert(s) recommandé(s) en attente'} — <Link href="/navi">{lang === 'ar' ? 'عرض اليوم في NAVI' : lang === 'en' ? "see Today's view in NAVI" : "voir Aujourd'hui dans NAVI"}</Link>.</div>}{c.willGoWrong.branchMismatches.length === 0 && c.willGoWrong.unassignedTomorrow === 0 && c.willGoWrong.docsExpiring.length === 0 && <div className="sub">{text.noRisk}</div>}</div></div></section>
     </div>
-  );
+    <section className="nv-panel"><div className="nv-panel-head"><div><h2 className="nv-panel-title">{text.actions}</h2><div className="nv-panel-hint">{text.actionHint}</div></div></div><div className="nv-panel-body"><div className="navi-col">{c.actions.length === 0 && <div className="sub">{text.noActions}</div>}{c.actions.map((a, i) => <div key={i} className={`alert ${a.priority === 1 ? 'CRITICAL' : 'ATTENTION'}`}><div className="t"><Link href={a.href}>{a.label}</Link></div><div className="m">{a.reason}</div><div className="sub">{lang === 'ar' ? 'الأولوية' : lang === 'en' ? 'Priority' : 'Priorité'} {a.priority === 1 ? (lang === 'ar' ? 'فورية' : lang === 'en' ? 'immediate' : 'immédiate') : a.priority === 2 ? (lang === 'ar' ? 'اليوم' : lang === 'en' ? 'today' : "aujourd'hui") : (lang === 'ar' ? 'هذا الأسبوع' : lang === 'en' ? 'this week' : 'cette semaine')} · {a.kind}</div></div>)}</div></div></section>
+    <div className="nv-pipe-note">{text.navHint} <Link href="/navi">{text.full}</Link> {text.pipeline}</div>
+  </div>;
 }

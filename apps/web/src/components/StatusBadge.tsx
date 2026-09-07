@@ -36,9 +36,11 @@ export function StatusBadge({ status, value, className, title }: StatusBadgeProp
   return (
     <span
       className={`pill ${pillClass} ${className ?? ''}`}
-      style={{ cursor: 'help' }}
+      data-status={statusValue}
+      style={{ cursor: 'help', color: 'var(--st)', background: 'color-mix(in srgb, var(--st) 15%, transparent)', display: 'inline-flex', alignItems: 'center', gap: 6 }}
       title={title ?? statusValue}
     >
+      <i aria-hidden="true" style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--st)', display: 'inline-block' }} />
       {statusValue}
     </span>
   );
