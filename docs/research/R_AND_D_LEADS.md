@@ -28,6 +28,58 @@ Do not adopt a project merely because it is popular or technically interesting. 
 
 ## High-value leads
 
+### Comp AI CRM (`trycompai/crm`) — ADAPT + REFERENCE
+
+Open-source, agentic-first CRM architecture with a persistent research agent, durable work queue, evidence-oriented tools/skills, and explicit data-boundary/sandbox patterns. The repository's release documentation describes an agent that runs independently of the browser, leases due work with database locking, and treats evidence and observed facts as distinct from model confidence. urlGitHub repositoryhttps://github.com/trycompai/crm
+
+**High-value patterns for locaOS/NAVI:**
+
+- **Evidence-first intelligence:** never let the model invent an operational fact; tools report observations/evidence and unresolved evidence becomes a suggestion for human settlement.
+- **Persistent agent work:** durable jobs, leases, retries, scheduled rechecks, and work that continues without an open browser.
+- **Versioned skills:** operational knowledge/policies can live as versioned, inspectable skill documents instead of one giant prompt.
+- **Authoritative internal context first:** read the system's own authoritative history before consulting external providers.
+- **Optional external capabilities:** external research/vendor integrations are additive; the agent remains useful when capabilities are unavailable.
+- **Sandbox/data boundaries:** agent shell/tooling should not automatically receive database credentials or unrestricted egress.
+- **Explainable rechecks:** scheduled future work should carry a reason that can be shown to the operator.
+
+**Architectural mapping:**
+
+```text
+locaOS operational truth
+        ↓
+current state + immutable/auditable history
+        ↓
+NAVI durable task / work queue
+        ↓
+authoritative context retrieval
+        ↓
+external evidence only when justified/available
+        ↓
+evidence + provenance
+        ↓
+NAVI reasoning
+        ↓
+suggestion / prepared action
+        ↓
+human approval where required
+        ↓
+locaOS domain-authorized mutation
+```
+
+**Important boundary:**
+
+- Do **not** copy the CRM architecture wholesale.
+- Do **not** make NAVI the operational source of truth.
+- locaOS remains authoritative for tenancy, fleet, reservations, contracts, inspections, finance, permissions, and domain state transitions.
+- Do **not** copy its deliberate single-tenant model; locaOS requires structural tenant isolation.
+- Do **not** introduce its stack (Bun/Turborepo/Prisma/Vercel/eve) merely for similarity; extract the architectural patterns only where they fit our accepted architecture.
+
+**Decision:** ADAPT the evidence-first agent discipline, durable work-queue/recheck pattern, versioned-skill approach, and strict data-boundary ideas. REFERENCE the project for persistent-agent UX and implementation patterns. Consider selected pieces FUTURE as NAVI becomes an autonomous/long-running operational intelligence layer.
+
+**Research status:** studied; high-value architectural/product reference. No runtime dependency approved.
+
+---
+
 ### Let's Seal / SEAL — ADAPT + REFERENCE
 
 **Core idea:** evidence should travel with the artifact and be independently verifiable.
