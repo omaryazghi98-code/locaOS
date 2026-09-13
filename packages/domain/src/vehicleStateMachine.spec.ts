@@ -1,27 +1,28 @@
 import { describe, expect, it } from 'vitest';
-import {
-  checkTransition, isExceptional, rentableFrom, TRANSITIONS, VEHICLE_STATUSES,
-} from './vehicleStateMachine.js';
+import { checkTransition, isExceptional, rentableFrom, TRANSITIONS, VEHICLE_STATUSES } from './vehicleStateMachine.js';
 
 describe('vehicle state machine (ADR-0010)', () => {
-  it('covers exactly the 14 mandated states', () => {
-    expect(VEHICLE_STATUSES).toHaveLength(14);
-  });
+  it('covers exactly the 14 mandated states', () => expect(VEHICLE_STATUSES).toHaveLength(14));
 
   it('happy path: AVAILABLE → … → AVAILABLE', () => {
-    const path = ['AVAILABLE', 'RESERVED', 'PREPARING', 'CONTRACT_READY', 'IN_TRANSIT', 'RENTED',
-      'AWAITING_INSPECTION', 'INSPECTED', 'CLEANING', 'AVAILABLE'] as const;
+    const path = ['AVAILABLE', 'RESERVED', 'PREPARING', 'CONTRACT_READY', 'IN_TRANSIT', 'RENTED', 'AWAITING_INSPECTION', 'INSPECTED', 'CLEANING', 'AVAILABLE'] as const;
     const actors = ['USER', 'RESERVATION_SERVICE', 'CONTRACT_SERVICE', 'INSPECTION_SERVICE', 'OPS_SERVICE', 'SCHEDULER'] as const;
     for (let i = 0; i < path.length - 1; i++) {
-      const legal = actors.some((a) => checkTransition(path[i]!, path[i + 1]!, a).ok);
+      const legal = actors.some((a) => checkTransition(path[i]!, path[i + 1]!, a, { reason: 'test' }).ok);
       expect(legal, `${path[i]} → ${path[i + 1]} should be legal for some actor`).toBe(true);
     }
+  });
+
+  it('rejects direct agent release after return', () => {
+    expect(checkTransition('INSPECTED', 'AVAILABLE', 'USER', { reason: 'test' }).ok).toBe(false);
+    expect(checkTransition('INSPECTED', 'AVAILABLE', 'OPS_SERVICE').ok).toBe(false);
+    expect(checkTransition('INSPECTED', 'AVAILABLE', 'OPS_SERVICE', { reason: 'post-return gate complete' }).ok).toBe(true);
   });
 
   it('rejects illegal jumps', () => {
     expect(checkTransition('AVAILABLE', 'RENTED', 'USER').ok).toBe(false);
     expect(checkTransition('AVAILABLE', 'INSPECTED', 'USER').ok).toBe(false);
-    expect(checkTransition('RENTED', 'AVAILABLE', 'USER').ok).toBe(false); // no silent return
+    expect(checkTransition('RENTED', 'AVAILABLE', 'USER').ok).toBe(false);
   });
 
   it('rejects same-state transitions', () => {
@@ -37,8 +38,7 @@ describe('vehicle state machine (ADR-0010)', () => {
 
   it('exceptional interrupts require a reason', () => {
     expect(checkTransition('RENTED', 'ACCIDENT', 'USER').ok).toBe(false);
-    const ok = checkTransition('RENTED', 'ACCIDENT', 'USER', { reason: 'Choc arrière signalé' });
-    expect(ok.ok).toBe(true);
+    expect(checkTransition('RENTED', 'ACCIDENT', 'USER', { reason: 'Choc arrière signalé' }).ok).toBe(true);
   });
 
   it('exceptional states never silently return to pipeline states', () => {
