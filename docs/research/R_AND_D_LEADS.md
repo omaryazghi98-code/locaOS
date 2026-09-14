@@ -262,11 +262,55 @@ Car-rental-specific product/workflow reference for reservation, fleet, and renta
 
 ---
 
-### Fleetbase — REFERENCE / BENCHMARK
+### Fleetbase — REFERENCE / BENCHMARK + ADAPT
 
-Fleet/logistics architecture and workflow reference.
+Fleetbase is a mature open-source **Logistics and Supply Chain Operating System (LSOS)** with a modular platform model. It is useful not because Navios should become a generic logistics product, but because Fleetbase demonstrates how a domain platform can separate a shared operational core from independently packaged capabilities and expose extensibility without continually rewriting the host application. The repository is actively maintained and is licensed AGPL-3.0. urlFleetbase repositoryhttps://github.com/fleetbase/fleetbase
 
-**Decision:** benchmark relevant operational patterns; keep the rental domain model authoritative in locaOS.
+**High-value patterns to study for Navios:**
+
+- **OS + modules:** keep the rental operational kernel authoritative while allowing future capabilities such as telematics, document intelligence, e-signatures, payments, and service-network integrations to behave as bounded modules.
+- **Capability registry:** Fleetbase's Universe/extension model is a useful reference for a future Navios module registry that can register navigation, routes, dashboard widgets, settings, UI capabilities, and lifecycle integrations without coupling every feature to the core console.
+- **Frontend + backend extension boundaries:** future Navios modules should have explicit contracts rather than becoming scattered feature code throughout the core.
+- **Realtime operational layer:** benchmark Fleetbase's realtime approach for a future event-driven NAVI experience where operational changes propagate into attention, tasks, fleet state, and command-center context without waiting for polling.
+- **Platform economics:** the extension ecosystem is a useful benchmark for the long-term Navios model of core SaaS + paid modules/integrations + eventually a service network.
+- **Operational network potential:** Fleetbase reinforces the broader platform idea that operational work can extend beyond the immediate company boundary into connected providers and transactions.
+
+**Architectural mapping:**
+
+```text
+                    NAVI
+             intelligence layer
+                     ↓
+        context / tools / events
+                     ↓
+┌──────────────────────────────────────────┐
+│              NAVIOS CORE                 │
+│ authoritative rental operational model   │
+│                                          │
+│ vehicles · reservations · contracts      │
+│ customers · inspections · operations     │
+│ finance · documents · permissions        │
+└───────────────────┬──────────────────────┘
+                    ↓
+             capability layer
+                    ↓
+     ┌────────┬──────┼───────┬────────┐
+     ▼        ▼      ▼       ▼        ▼
+ telematics  OCR   e-sign  payments  network
+```
+
+**Important boundary:**
+
+- Do **not** copy Fleetbase's Ember/Laravel/extension architecture wholesale.
+- Do **not** turn Navios into a generic freight/logistics platform.
+- Do **not** create a marketplace or extension marketplace prematurely.
+- Do **not** replace the existing locaOS domain model or authoritative state machine.
+- The rental lifecycle remains the differentiator: reservation → contract → pickup → return → inspection → operational work → QA → availability.
+- Any future module must respect tenancy, permissions, domain authority, auditability, and provider-adapter boundaries.
+
+**Decision:** **ADAPT** the modular-OS/capability-registry philosophy and benchmark realtime/event-driven extension patterns. **REFERENCE** Fleetbase's platform and ecosystem model. Do not adopt its framework or runtime architecture.
+
+**Research status:** studied; high-value long-term platform architecture reference. No Fleetbase runtime dependency approved.
 
 ---
 
