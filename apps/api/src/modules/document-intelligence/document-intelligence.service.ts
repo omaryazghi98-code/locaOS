@@ -26,7 +26,7 @@ export class DocumentIntelligenceService {
       if ((existing as unknown as { rows: unknown[] }).rows[0]) return (existing as unknown as { rows: unknown[] }).rows[0];
       const inserted = await tx.execute(sql`insert into document_intakes (agency_id, document_id, status, created_by) values (${agencyId}, ${documentId}, 'RECEIVED', ${userId}) returning *`);
       const intake = (inserted as unknown as { rows: unknown[] }).rows[0];
-      await audit(tx, { agencyId, actor: { id: userId }, entityType: 'document_intake', entityId: String((intake as { id: string }).id), action: 'DOCUMENT_INTAKE_CREATED', after: { documentId, status: 'RECEIVED' } });
+      await audit(tx, { agencyId, actor: { id: userId, name: null }, entityType: 'document_intake', entityId: String((intake as { id: string }).id), action: 'DOCUMENT_INTAKE_CREATED', after: { documentId, status: 'RECEIVED' } });
       return intake;
     });
   }
@@ -41,10 +41,11 @@ export class DocumentIntelligenceService {
   async get(agencyId: string, id: string) {
     return withTenant(agencyId, async (tx) => {
       const result = await tx.execute(sql`select di.*, d.kind as source_document_kind, d.entity_type, d.entity_id from document_intakes di join documents d on d.id=di.document_id where di.agency_id=${agencyId} and di.id=${id} limit 1`);
-      const intake = (result as unknown as { rows: unknown[] }).rows[0] as { id: string } | undefined;
-      if (!intake) throw new NotFoundException('Intake documentaire introuvable');
+      const intake = (result as unknown as { id: string } | undefined);
+      const row = (result as unknown as { rows: unknown[] }).rows[0] as { id: string } | undefined;
+      if (!row) throw new NotFoundException('Intake documentaire introuvable');
       const runs = await tx.execute(sql`select * from document_extraction_runs where agency_id=${agencyId} and intake_id=${id} order by created_at desc`);
-      return { intake, runs: (runs as unknown as { rows: unknown[] }).rows };
+      return { intake: row, runs: (runs as unknown as { rows: unknown[] }).rows };
     });
   }
 
@@ -53,7 +54,7 @@ export class DocumentIntelligenceService {
       const result = await tx.execute(sql`update document_intakes set document_family=${family}, status='CLASSIFIED', updated_at=now() where agency_id=${agencyId} and id=${id} returning *`);
       const row = (result as unknown as { rows: unknown[] }).rows[0];
       if (!row) throw new NotFoundException('Intake documentaire introuvable');
-      await audit(tx, { agencyId, actor: { id: userId }, entityType: 'document_intake', entityId: id, action: 'DOCUMENT_CLASSIFIED', after: { family } });
+      await audit(tx, { agencyId, actor: { id: userId, name: null }, entityType: 'document_intake', entityId: id, action: 'DOCUMENT_CLASSIFIED', after: { family } });
       return row;
     });
   }
@@ -73,7 +74,7 @@ export class DocumentIntelligenceService {
           await tx.execute(sql`insert into document_extracted_fields (agency_id,extraction_run_id,field_key,value_text,confidence,source_region) values (${agencyId},${runId},${field.key},${field.value},${field.confidence},${JSON.stringify(field.sourceRegion ?? null)}::jsonb)`);
         }
         await tx.execute(sql`update document_intakes set status='READY_FOR_CONFIRMATION', updated_at=now() where id=${id} and agency_id=${agencyId}`);
-        await audit(tx, { agencyId, actor: { id: userId }, entityType: 'document_intake', entityId: id, action: 'DOCUMENT_OCR_COMPLETED', after: { provider: output.provider, extractionRunId: runId, fieldCount: output.fields.length } });
+        await audit(tx, { agencyId, actor: { id: userId, name: null }, entityType: 'document_intake', entityId: id, action: 'DOCUMENT_OCR_COMPLETED', after: { provider: output.provider, extractionRunId: runId, fieldCount: output.fields.length } });
         return { extractionRunId: runId, ...output };
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
