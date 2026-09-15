@@ -42,10 +42,9 @@ export class DocumentIntelligenceService {
     return withTenant(agencyId, async (tx) => {
       const result = await tx.execute(sql`select di.*, d.kind as source_document_kind, d.entity_type, d.entity_id from document_intakes di join documents d on d.id=di.document_id where di.agency_id=${agencyId} and di.id=${id} limit 1`);
       const intake = (result as unknown as { id: string } | undefined);
-      const row = (result as unknown as { rows: unknown[] }).rows[0] as { id: string } | undefined;
-      if (!row) throw new NotFoundException('Intake documentaire introuvable');
+      if (!intake) throw new NotFoundException('Intake documentaire introuvable');
       const runs = await tx.execute(sql`select * from document_extraction_runs where agency_id=${agencyId} and intake_id=${id} order by created_at desc`);
-      return { intake: row, runs: (runs as unknown as { rows: unknown[] }).rows };
+      return { intake, runs: (runs as unknown as { rows: unknown[] }).rows };
     });
   }
 
