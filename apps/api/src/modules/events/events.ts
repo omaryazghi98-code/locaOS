@@ -52,6 +52,8 @@ export type DomainEventMap = {
   CashSessionOpenTooLong: { sessionId: string; hoursOpen: number };
   LoginOutsideHours: { userId: string; email: string; at: string };
   ReservationLateDeparture: { reservationId: string; reference: string; minutesPast: number };
+  OperationsTaskCreated: { taskId: string; vehicleId: string; taskKind: string };
+  ReturnPreparationTriaged: { taskId: string; vehicleId: string; childTaskIds: string[] };
 };
 
 export type DomainEventType = keyof DomainEventMap;
