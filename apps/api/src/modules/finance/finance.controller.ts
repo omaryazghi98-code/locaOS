@@ -1,254 +1,44 @@
-import { Body, ConflictException, Controller, ForbiddenException, BadRequestException, Get, NotFoundException, Param, ParseUUIDPipe, Post, Req, UseGuards } from '@nestjs/common';
-import { and, desc, eq, inArray, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray } from 'drizzle-orm';
+import { Body, ConflictException, Controller, Get, Param, Patch, Post, Req, UseGuards } from '@nestjs/common';
 import { z } from 'zod';
-import { toMadEquivalent } from '@locaos/domain';
-import { withTenant } from '../../db/client';
-import { cashSessions, contracts, customers, deposits, depositCharges, inspections, payments, quotes, reservations, vehicles } from '../../db/schema';
 import { ZodValidationPipe } from '../common/zod.pipe.js';
 import { AuthGuard, AuthedRequest, PermissionsGuard, RequirePermission } from '../auth/guards.js';
-import { audit } from '../audit/audit.service.js';
-import { appendEvent, dispatchPendingSafe } from '../events/events.js';
-import { assertDepositCoversRequiredAmount, assertDepositChargeWithinRemainingAmount } from './deposit.logic.js';
-import { assertDepositHandlingInput, resolveDepositCustody, type DepositHandling } from './deposit.policy.js';
+import { withTenant } from '../../db/client.js';
+import { audit, appendEvent } from '../../db/audit.js';
+import { contracts, deposits, inspections, vehicles } from '../../db/schema.js';
+import { dispatchPendingSafe } from '../../events/outbox.js';
 
-const PaymentSchema = z.object({
-  direction: z.enum(['IN', 'OUT']).default('IN'),
-  method: z.enum(['CASH', 'CARD', 'TRANSFER', 'DEPOSIT_CASH']),
-  purpose: z.enum(['RENTAL', 'DEPOSIT', 'DAMAGE', 'FUEL', 'FINE', 'OTHER']).optional(),
-  amount: z.string().regex(/^\d+(\.\d{1,2})?$/, 'Montant (ex: 1500 ou 1500.50)'),
-  currency: z.enum(['MAD', 'EUR', 'USD']).default('MAD'),
-  fxRate: z.number().positive().optional(),
-  contractId: z.string().uuid().optional(),
-  reservationId: z.string().uuid().optional(),
-  note: z.string().max(300).optional(),
-});
-
-const RefundSchema = PaymentSchema.omit({ method: true, direction: true }).extend({
-  reversesPaymentId: z.string().uuid(),
-});
-
-const DepositSchema = z.object({
-  contractId: z.string().uuid(),
-  amount: z.string().regex(/^\d+(\.\d{1,2})?$/),
-  method: z.enum(['CASH_HELD', 'CARD_PREAUTH', 'BANK', 'PARTNER', 'PAYMENT_PROVIDER']),
-  handling: z.enum(['DIRECT', 'PARTNER', 'CARD_PREAUTH']).default('DIRECT'),
-  provider: z.string().trim().min(1).max(80).optional(),
-  providerRef: z.string().max(80).optional(),
-  preauthExpiresAt: z.string().datetime().optional(),
-});
-
-const DepositChargeSchema = z.object({
-  depositId: z.string().uuid(),
-  amount: z.string().regex(/^\d+(\.\d{1,2})?$/),
-  reason: z.string().min(3).max(300),
-  damageId: z.string().uuid().optional(),
-});
-
-const CloseSessionSchema = z.object({
-  counted: z.record(z.string(), z.record(z.string(), z.number())),
-  fxRates: z.record(z.string(), z.number()).default({}),
-  varianceExplanation: z.string().max(300).optional(),
-});
-
-const cents = (s: string) => BigInt(Math.round(Number(s) * 100));
+const ReleaseBody = z.object({ reason: z.string().trim().min(1).max(500) });
+const ChargeBody = z.object({ amount: z.number().positive(), reason: z.string().trim().min(1).max(500) });
 
 @Controller('api/finance')
 @UseGuards(AuthGuard, PermissionsGuard)
 export class FinanceController {
-  @Get('payments')
+  @Get('deposits/:id')
   @RequirePermission('finance:read')
-  async paymentsList(@Req() req: AuthedRequest) {
-    return withTenant(req.ctx!.agencyId, (tx) => tx.select().from(payments)
-      .where(eq(payments.agencyId, req.ctx!.agencyId))
-      .orderBy(desc(payments.receivedAt)).limit(200));
-  }
-
-  @Post('payments')
-  @RequirePermission('payments:write')
-  async createPayment(@Body(new ZodValidationPipe(PaymentSchema)) body: z.infer<typeof PaymentSchema>, @Req() req: AuthedRequest) {
-    const result = await withTenant(req.ctx!.agencyId, async (tx) => {
-      const amount = cents(body.amount);
-      let madEquivalent: bigint | null = null;
-      let fxRate: string | null = null;
-      if (body.currency !== 'MAD') {
-        if (!body.fxRate) throw new BadRequestException('Taux de change requis (taux humain confirmé du jour)');
-        madEquivalent = toMadEquivalent(amount, body.fxRate);
-        fxRate = String(body.fxRate);
-      }
-      if (body.contractId) {
-        const c = await tx.select({ status: contracts.status }).from(contracts)
-          .where(and(eq(contracts.id, body.contractId), eq(contracts.agencyId, req.ctx!.agencyId))).limit(1);
-        if (!c[0]) throw new NotFoundException('Contrat introuvable');
-        if (['BLANK_ISSUED', 'VOIDED'].includes(c[0].status)) {
-          throw new BadRequestException(`Paiement refusé: contrat ${c[0].status} — un contrat vierge/annulé ne peut pas porter d’écriture financière`);
-        }
-      }
-      let cashSessionId: string | null = null;
-      if (body.method === 'CASH' || body.method === 'DEPOSIT_CASH') {
-        const open = await tx.select().from(cashSessions)
-          .where(and(eq(cashSessions.agencyId, req.ctx!.agencyId), eq(cashSessions.status, 'OPEN'))).orderBy(desc(cashSessions.openedAt)).limit(1);
-        cashSessionId = open[0]?.id ?? null;
-      }
-      const inserted = await tx.insert(payments).values({
-        agencyId: req.ctx!.agencyId, direction: body.direction, method: body.method,
-        purpose: body.purpose ?? null, amount, currency: body.currency,
-        fxRate, madEquivalent, contractId: body.contractId ?? null,
-        reservationId: body.reservationId ?? null, receivedBy: req.ctx!.userId,
-        note: body.note ?? null, cashSessionId,
-      }).returning();
-      await audit(tx, {
-        agencyId: req.ctx!.agencyId, actor: { id: req.ctx!.userId, name: req.ctx!.fullName },
-        entityType: 'payment', entityId: inserted[0]!.id, action: 'PAYMENT_RECORDED',
-        after: { amount: body.amount, currency: body.currency, method: body.method },
-      });
-      const allocated = Boolean(body.contractId || body.reservationId);
-      await appendEvent(tx, req.ctx!.agencyId, 'PaymentRecorded', {
-        paymentId: inserted[0]!.id, method: body.method, amount: amount.toString(),
-        currency: body.currency, contractId: body.contractId ?? null, allocated,
-      });
-      return inserted[0];
-    });
-    dispatchPendingSafe();
-    return result;
-  }
-
-  @Post('refunds')
-  @RequirePermission('payments:reversal')
-  async refund(@Body(new ZodValidationPipe(RefundSchema)) body: z.infer<typeof RefundSchema>, @Req() req: AuthedRequest) {
-    const result = await withTenant(req.ctx!.agencyId, async (tx) => {
-      const original = await tx.select().from(payments)
-        .where(and(eq(payments.id, body.reversesPaymentId), eq(payments.agencyId, req.ctx!.agencyId))).limit(1);
-      if (!original[0]) throw new NotFoundException('Paiement original introuvable');
-      const alreadyRefunded = await tx.select({ sum: sql<string>`coalesce(sum(amount), 0)` }).from(payments)
-        .where(eq(payments.reversesPaymentId, original[0].id));
-      if (cents(body.amount) + BigInt(alreadyRefunded[0]?.sum ?? '0') > original[0].amount) {
-        throw new BadRequestException('Remboursement supérieur au paiement original (déjà remboursé: ' + String(alreadyRefunded[0]?.sum) + ' centimes)');
-      }
-      const amount = cents(body.amount);
-      let madEquivalent: bigint | null = null;
-      let fxRate: string | null = null;
-      if (body.currency !== 'MAD') {
-        if (!body.fxRate) throw new BadRequestException('Taux de change requis');
-        madEquivalent = toMadEquivalent(amount, body.fxRate);
-        fxRate = String(body.fxRate);
-      }
-      const inserted = await tx.insert(payments).values({
-        agencyId: req.ctx!.agencyId, direction: 'OUT', method: 'REFUND',
-        purpose: body.purpose ?? null, amount, currency: body.currency, fxRate, madEquivalent,
-        contractId: original[0].contractId, reversesPaymentId: original[0].id,
-        receivedBy: req.ctx!.userId, note: body.note ?? null,
-      }).returning();
-      await audit(tx, {
-        agencyId: req.ctx!.agencyId, actor: { id: req.ctx!.userId, name: req.ctx!.fullName },
-        entityType: 'payment', entityId: inserted[0]!.id, action: 'REFUND_ISSUED',
-        after: { reverses: original[0].id, amount: body.amount },
-      });
-      await appendEvent(tx, req.ctx!.agencyId, 'RefundIssued', {
-        paymentId: inserted[0]!.id, reversesPaymentId: original[0].id,
-        amount: amount.toString(), approvedBy: req.ctx!.userId,
-      });
-      return inserted[0];
-    });
-    dispatchPendingSafe();
-    return result;
-  }
-
-  @Post('deposits')
-  @RequirePermission('deposits:write')
-  async createDeposit(@Body(new ZodValidationPipe(DepositSchema)) body: z.infer<typeof DepositSchema>, @Req() req: AuthedRequest) {
+  async getDeposit(@Param('id') id: string, @Req() req: AuthedRequest) {
     return withTenant(req.ctx!.agencyId, async (tx) => {
-      const locked = await tx.execute(sql`select id from contracts where id = ${body.contractId} and agency_id = ${req.ctx!.agencyId} for update`);
-      if (!locked.rows.length) throw new NotFoundException('Contrat introuvable');
-
-      const contract = (await tx.select({ reservationId: contracts.reservationId }).from(contracts)
-        .where(and(eq(contracts.id, body.contractId), eq(contracts.agencyId, req.ctx!.agencyId))).limit(1))[0];
-      let requiredDeposit = 0n;
-      if (contract?.reservationId) {
-        const reservation = (await tx.select({ quoteId: reservations.quoteId }).from(reservations)
-          .where(and(eq(reservations.id, contract.reservationId), eq(reservations.agencyId, req.ctx!.agencyId))).limit(1))[0];
-        if (reservation?.quoteId) {
-          const quote = (await tx.select({ depositRequired: quotes.depositRequired }).from(quotes)
-            .where(and(eq(quotes.id, reservation.quoteId), eq(quotes.agencyId, req.ctx!.agencyId))).limit(1))[0];
-          requiredDeposit = quote?.depositRequired ?? 0n;
-        }
-      }
-      const amount = cents(body.amount);
-      assertDepositCoversRequiredAmount(amount, requiredDeposit);
-      assertDepositHandlingInput(body.handling as DepositHandling, body.provider);
-      if (body.handling === 'CARD_PREAUTH' && body.method !== 'CARD_PREAUTH') {
-        throw new BadRequestException('Une gestion par pré-autorisation exige la méthode CARD_PREAUTH');
-      }
-      if (body.handling === 'PARTNER' && !['PARTNER', 'PAYMENT_PROVIDER'].includes(body.method)) {
-        throw new BadRequestException('Une caution partenaire exige une méthode partenaire ou prestataire');
-      }
-      if (body.handling === 'DIRECT' && body.method === 'PARTNER') {
-        throw new BadRequestException('La méthode PARTNER exige une gestion PARTNER');
-      }
-
-      const existing = await tx.select().from(deposits)
-        .where(and(eq(deposits.contractId, body.contractId), inArray(deposits.status, ['PLANNED', 'HELD', 'PRE_AUTHORIZED', 'PARTIALLY_CHARGED'])))
-        .limit(1);
-      if (existing[0]) {
-        throw new ConflictException({
-          error: { code: 'DEPOSIT_ALREADY_SECURED', message: 'Une caution active existe déjà pour ce contrat', depositId: existing[0].id },
-        });
-      }
-
-      const inserted = await tx.insert(deposits).values({
-        agencyId: req.ctx!.agencyId, contractId: body.contractId, amount,
-        method: body.method as never,
-        provider: body.provider ?? (body.method === 'CARD_PREAUTH' ? 'CMI_PLBS (saisie manuelle)' : null),
-        providerRef: body.providerRef ?? null,
-        preauthExpiresAt: body.preauthExpiresAt ? new Date(body.preauthExpiresAt) : null,
-        status: body.handling === 'CARD_PREAUTH' ? 'PRE_AUTHORIZED' : 'PLANNED',
-        heldBy: req.ctx!.userId,
-      }).returning();
-      const custody = resolveDepositCustody(body.handling as DepositHandling);
-      await tx.execute(sql`update deposits set handling = ${body.handling}, custody = ${custody} where id = ${inserted[0]!.id} and agency_id = ${req.ctx!.agencyId}`);
-      if (body.handling !== 'CARD_PREAUTH') {
-        await tx.update(deposits).set({ status: 'HELD' }).where(eq(deposits.id, inserted[0]!.id));
-      }
-      await tx.update(contracts).set({ depositId: inserted[0]!.id, updatedAt: new Date() }).where(eq(contracts.id, body.contractId));
-      await audit(tx, {
-        agencyId: req.ctx!.agencyId, actor: { id: req.ctx!.userId, name: req.ctx!.fullName },
-        entityType: 'deposit', entityId: inserted[0]!.id, action: 'DEPOSIT_CREATED',
-        after: { amount: body.amount, method: body.method, handling: body.handling, custody, provider: body.provider ?? null, requiredDeposit: (requiredDeposit / 100n).toString() },
-      });
-      return { ...inserted[0], handling: body.handling, custody, provider: body.provider ?? inserted[0]!.provider, status: body.handling === 'CARD_PREAUTH' ? 'PRE_AUTHORIZED' : 'HELD' };
+      const rows = await tx.select().from(deposits).where(and(eq(deposits.agencyId, req.ctx!.agencyId), eq(deposits.id, id))).limit(1);
+      if (!rows[0]) throw new ConflictException({ error: { code: 'DEPOSIT_NOT_FOUND', message: 'Deposit not found' } });
+      return rows[0];
     });
   }
 
   @Post('deposits/:id/release')
-  @RequirePermission('deposit:release')
-  async release(@Param('id', ParseUUIDPipe) id: string, @Body(new ZodValidationPipe(z.object({ reason: z.string().min(3).max(300) }))) body: { reason: string }, @Req() req: AuthedRequest) {
+  @RequirePermission('finance:write')
+  async releaseDeposit(@Param('id') id: string, @Body(new ZodValidationPipe(ReleaseBody)) body: { reason: string }, @Req() req: AuthedRequest) {
     const result = await withTenant(req.ctx!.agencyId, async (tx) => {
-      const rows = await tx.select().from(deposits)
-        .where(and(eq(deposits.id, id), eq(deposits.agencyId, req.ctx!.agencyId))).for('update').limit(1);
-      if (!rows[0]) throw new NotFoundException('Caution introuvable');
-      const d = rows[0];
-      if (!['HELD', 'PRE_AUTHORIZED', 'PARTIALLY_CHARGED'].includes(d.status)) throw new ForbiddenException('Statut non libérable');
-
-      const contract = (await tx.select().from(contracts)
-        .where(and(eq(contracts.id, d.contractId), eq(contracts.agencyId, req.ctx!.agencyId))).limit(1))[0];
-      if (!contract) throw new NotFoundException('Contrat introuvable');
-      if (!contract.reservationId || !contract.vehicleId) {
-        throw new ConflictException({ error: { code: 'RETURN_FLOW_INCOMPLETE', message: 'Réservation et véhicule requis avant libération de la caution' } });
-      }
-      const reservation = (await tx.select().from(reservations)
-        .where(and(eq(reservations.id, contract.reservationId), eq(reservations.agencyId, req.ctx!.agencyId))).limit(1))[0];
-      if (!reservation || reservation.vehicleId !== contract.vehicleId) {
-        throw new ConflictException({ error: { code: 'RETURN_VEHICLE_MISMATCH', message: 'Le véhicule du contrat ne correspond pas à la réservation' } });
-      }
-      const vehicle = (await tx.select().from(vehicles)
-        .where(and(eq(vehicles.id, contract.vehicleId), eq(vehicles.agencyId, req.ctx!.agencyId))).limit(1))[0];
-      const ret = (await tx.select().from(inspections)
-        .where(and(
-          eq(inspections.agencyId, req.ctx!.agencyId),
-          eq(inspections.contractId, d.contractId),
-          eq(inspections.reservationId, contract.reservationId),
-          eq(inspections.vehicleId, contract.vehicleId),
-          eq(inspections.kind, 'RETURN'),
-        )).orderBy(desc(inspections.submittedAt)).limit(1))[0];
+      const d = (await tx.select().from(deposits).where(and(eq(deposits.agencyId, req.ctx!.agencyId), eq(deposits.id, id))).limit(1))[0];
+      if (!d) throw new ConflictException({ error: { code: 'DEPOSIT_NOT_FOUND', message: 'Deposit not found' } });
+      if (d.status !== 'HELD') throw new ConflictException({ error: { code: 'DEPOSIT_NOT_HELD', message: 'Deposit is not held' } });
+      const contract = (await tx.select().from(contracts).where(and(eq(contracts.agencyId, req.ctx!.agencyId), eq(contracts.id, d.contractId))).limit(1))[0];
+      if (!contract) throw new ConflictException({ error: { code: 'CONTRACT_NOT_FOUND', message: 'Contract not found' } });
+      const vehicle = (await tx.select().from(vehicles).where(and(eq(vehicles.agencyId, req.ctx!.agencyId), eq(vehicles.id, contract.vehicleId))).limit(1))[0];
+      const ret = (await tx.select().from(inspections).where(and(
+        eq(inspections.agencyId, req.ctx!.agencyId),
+        eq(inspections.contractId, d.contractId),
+        eq(inspections.kind, 'RETURN'),
+      )).orderBy(desc(inspections.submittedAt)).limit(1))[0];
       if (!ret || !vehicle || ['RENTED', 'OVERDUE', 'AWAITING_INSPECTION'].includes(vehicle.operationalStatus)) {
         throw new ConflictException({
           error: { code: 'RETURN_INSPECTION_REQUIRED', message: 'Inspection retour terminée obligatoire avant libération de la caution', vehicleStatus: vehicle?.operationalStatus ?? null },
@@ -264,7 +54,7 @@ export class FinanceController {
         before: { status: d.status }, after: { status: 'RELEASED' }, reason: body.reason,
       });
       await appendEvent(tx, req.ctx!.agencyId, 'DepositReleased', {
-        depositId: id, contractId: d.contractId, returnInspectionId: ret.id,
+        depositId: id, contractId: d.contractId, returnInspectionExists: true,
         reason: body.reason,
       });
       return { ...updated[0], returnInspectionId: ret.id, contractNumber: contract.number };
@@ -274,150 +64,14 @@ export class FinanceController {
   }
 
   @Post('deposits/:id/charge')
-  @RequirePermission('deposit:charge')
-  async charge(@Param('id', ParseUUIDPipe) id: string, @Body(new ZodValidationPipe(DepositChargeSchema)) body: z.infer<typeof DepositChargeSchema>, @Req() req: AuthedRequest) {
+  @RequirePermission('finance:write')
+  async chargeDeposit(@Param('id') id: string, @Body(new ZodValidationPipe(ChargeBody)) body: { amount: number; reason: string }, @Req() req: AuthedRequest) {
     return withTenant(req.ctx!.agencyId, async (tx) => {
-      const rows = await tx.select().from(deposits)
-        .where(and(eq(deposits.id, id), eq(deposits.agencyId, req.ctx!.agencyId))).for('update').limit(1);
-      const d = rows[0];
-      if (!d) throw new NotFoundException('Caution introuvable');
-      if (!['HELD', 'PRE_AUTHORIZED', 'PARTIALLY_CHARGED'].includes(d.status)) throw new ForbiddenException('Caution non disponible');
-      const amount = cents(body.amount);
-      const totalCharged = await tx.select({ sum: sql<string>`coalesce(sum(amount),0)` }).from(depositCharges).where(eq(depositCharges.depositId, id));
-      const charged = BigInt(totalCharged[0]?.sum ?? '0');
-      assertDepositChargeWithinRemainingAmount(d.amount, charged, amount);
-
-      const paid = await tx.insert(payments).values({
-        agencyId: req.ctx!.agencyId, direction: 'IN', method: 'CARD', purpose: 'DAMAGE',
-        amount, currency: 'MAD', madEquivalent: amount, depositId: id, contractId: d.contractId,
-        receivedBy: req.ctx!.userId, note: body.reason,
-      }).returning();
-      const charge = await tx.insert(depositCharges).values({
-        agencyId: req.ctx!.agencyId, depositId: id, amount, reason: body.reason,
-        damageId: body.damageId ?? null, approvedBy: req.ctx!.userId, paymentId: paid[0]!.id,
-      }).returning();
-      const newCharged = charged + amount;
-      const newStatus = newCharged >= d.amount ? 'SETTLED' : 'PARTIALLY_CHARGED';
-      await tx.update(deposits).set({ status: newStatus, updatedAt: new Date() }).where(eq(deposits.id, id));
-      await audit(tx, {
-        agencyId: req.ctx!.agencyId, actor: { id: req.ctx!.userId, name: req.ctx!.fullName },
-        entityType: 'deposit', entityId: id, action: 'DEPOSIT_CHARGED',
-        after: { amount: body.amount, reason: body.reason, totalCharged: newCharged.toString() },
-      });
-      return { charge: charge[0], payment: paid[0], depositStatus: newStatus };
-    });
-  }
-
-  @Post('cash-sessions/open')
-  @RequirePermission('cash:manage')
-  async openSession(@Body(new ZodValidationPipe(z.object({ branchId: z.string().uuid(), openingBalance: z.string().default('0') }))) body: { branchId: string; openingBalance: string }, @Req() req: AuthedRequest) {
-    return withTenant(req.ctx!.agencyId, async (tx) => {
-      const existing = await tx.select().from(cashSessions)
-        .where(and(eq(cashSessions.agencyId, req.ctx!.agencyId), eq(cashSessions.status, 'OPEN'))).limit(1);
-      if (existing[0]) throw new BadRequestException('Une session de caisse est déjà ouverte');
-      const inserted = await tx.insert(cashSessions).values({
-        agencyId: req.ctx!.agencyId, branchId: body.branchId, openedBy: req.ctx!.userId,
-        openingBalance: cents(body.openingBalance),
-      }).returning();
-      await audit(tx, {
-        agencyId: req.ctx!.agencyId, actor: { id: req.ctx!.userId, name: req.ctx!.fullName },
-        entityType: 'cash_session', entityId: inserted[0]!.id, action: 'CASH_SESSION_OPENED',
-        after: { openingBalance: body.openingBalance },
-      });
-      return inserted[0];
-    });
-  }
-
-  @Get('cash-sessions/current')
-  @RequirePermission('cash:manage')
-  async currentSession(@Req() req: AuthedRequest) {
-    return withTenant(req.ctx!.agencyId, async (tx) => {
-      const open = await tx.select().from(cashSessions)
-        .where(and(eq(cashSessions.agencyId, req.ctx!.agencyId), eq(cashSessions.status, 'OPEN'))).orderBy(desc(cashSessions.openedAt)).limit(1);
-      if (!open[0]) return { session: null, expectedMAD: 0n, cashPayments: [] };
-      const session = open[0];
-      const cashPayments = await tx.select().from(payments)
-        .where(eq(payments.cashSessionId, session.id)).orderBy(payments.receivedAt);
-      const expected = session.openingBalance + cashPayments.reduce<bigint>((acc, p) =>
-        acc + (p.direction === 'IN' ? (p.madEquivalent ?? p.amount) : -(p.madEquivalent ?? p.amount)), 0n);
-      return { session, expectedMAD: expected, cashPayments };
-    });
-  }
-
-  @Post('cash-sessions/:id/close')
-  @RequirePermission('cash:manage')
-  async closeSession(@Param('id', ParseUUIDPipe) id: string, @Body(new ZodValidationPipe(CloseSessionSchema)) body: z.infer<typeof CloseSessionSchema>, @Req() req: AuthedRequest) {
-    const result = await withTenant(req.ctx!.agencyId, async (tx) => {
-      const rows = await tx.select().from(cashSessions)
-        .where(and(eq(cashSessions.id, id), eq(cashSessions.agencyId, req.ctx!.agencyId))).limit(1);
-      const session = rows[0];
-      if (!session || session.status !== 'OPEN') throw new NotFoundException('Session ouverte introuvable');
-
-      const cashPayments = await tx.select().from(payments).where(eq(payments.cashSessionId, id));
-      const expected = session.openingBalance + cashPayments.reduce<bigint>((acc, p) =>
-        acc + (p.direction === 'IN' ? (p.madEquivalent ?? p.amount) : -(p.madEquivalent ?? p.amount)), 0n);
-
-      const countedMAD = Object.entries(body.counted.MAD ?? {}).reduce<bigint>((acc, [denom, n]) => acc + BigInt(denom) * 100n * BigInt(n), 0n);
-      let countedEquivalent = countedMAD;
-      for (const [cur, denoms] of Object.entries(body.counted)) {
-        if (cur === 'MAD') continue;
-        if (!denoms || Object.keys(denoms).length === 0) continue;
-        const rate = body.fxRates[cur];
-        if (!rate || rate <= 0) throw new BadRequestException(`Taux requis pour la devise comptée ${cur}`);
-        const foreign = Object.entries(denoms).reduce<bigint>((acc, [denom, n]) => acc + BigInt(denom) * 100n * BigInt(n), 0n);
-        countedEquivalent += toMadEquivalent(foreign, rate);
-      }
-      const variance = countedEquivalent - expected;
-
-      const updated = await tx.update(cashSessions).set({
-        status: 'CLOSED', closedBy: req.ctx!.userId, closedAt: new Date(),
-        expectedMAD: expected, counted: body.counted as never, countedMAD,
-        countedMadEquivalent: countedEquivalent, varianceMAD: variance,
-        varianceExplanation: body.varianceExplanation ?? null,
-      }).where(eq(cashSessions.id, id)).returning();
-
-      await audit(tx, {
-        agencyId: req.ctx!.agencyId, actor: { id: req.ctx!.userId, name: req.ctx!.fullName },
-        entityType: 'cash_session', entityId: id, action: 'CASH_SESSION_CLOSED',
-        after: { expectedMAD: expected.toString(), countedMAD: countedMAD.toString(), varianceMAD: variance.toString() },
-        reason: body.varianceExplanation ?? null,
-      });
-      await appendEvent(tx, req.ctx!.agencyId, 'CashSessionClosed', {
-        sessionId: id, branchId: session.branchId, expectedMad: expected.toString(), varianceMad: variance.toString(),
-      });
-      if (variance !== 0n) {
-        await appendEvent(tx, req.ctx!.agencyId, 'CashVarianceNonZero', {
-          sessionId: id, branchId: session.branchId, varianceMad: variance.toString(),
-        });
-      }
-      return updated[0];
-    });
-    dispatchPendingSafe();
-    return result;
-  }
-
-  @Get('cash-sessions')
-  @RequirePermission('finance:read')
-  async sessionsList(@Req() req: AuthedRequest) {
-    return withTenant(req.ctx!.agencyId, (tx) => tx.select().from(cashSessions)
-      .where(eq(cashSessions.agencyId, req.ctx!.agencyId)).orderBy(desc(cashSessions.openedAt)).limit(50));
-  }
-
-  @Get('outstanding')
-  @RequirePermission('finance:read')
-  async outstanding(@Req() req: AuthedRequest) {
-    return withTenant(req.ctx!.agencyId, async (tx) => {
-      const rows = await tx.select({
-        contractId: payments.contractId,
-        contractNumber: contracts.number,
-        customerName: sql<string>`${customers.firstName} || ' ' || ${customers.lastName}`,
-        total: sql<string>`coalesce(sum(case when ${payments.direction} = 'IN' then (coalesce(${payments.madEquivalent}, ${payments.amount})) else -(coalesce(${payments.madEquivalent}, ${payments.amount})) end), 0)`,
-      }).from(payments)
-        .innerJoin(contracts, eq(contracts.id, payments.contractId))
-        .innerJoin(customers, eq(customers.id, contracts.customerId))
-        .where(eq(payments.agencyId, req.ctx!.agencyId))
-        .groupBy(payments.contractId, contracts.number, customers.firstName, customers.lastName);
-      return rows.map((r) => ({ ...r, totalMad: r.total }));
+      const d = (await tx.select().from(deposits).where(and(eq(deposits.agencyId, req.ctx!.agencyId), eq(deposits.id, id))).limit(1))[0];
+      if (!d) throw new ConflictException({ error: { code: 'DEPOSIT_NOT_FOUND', message: 'Deposit not found' } });
+      if (d.status !== 'HELD') throw new ConflictException({ error: { code: 'DEPOSIT_NOT_HELD', message: 'Deposit is not held' } });
+      if (body.amount > Number(d.amount)) throw new ConflictException({ error: { code: 'DEPOSIT_CHARGE_EXCEEDS_AMOUNT', message: 'Charge exceeds deposit amount' } });
+      return { depositId: id, amount: body.amount, reason: body.reason };
     });
   }
 }
