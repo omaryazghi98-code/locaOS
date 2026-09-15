@@ -1,12 +1,14 @@
 import { and, eq, inArray } from 'drizzle-orm';
 import { contracts, customers, inspections, reservations, vehicles } from '../../db/schema.js';
 import { withTenant } from '../../db/client.js';
-import type { NaviContext, NaviEvidence, NaviEntityType } from './navi.types.js';
+import type { NaviContext, NaviEvidence } from './navi.types.js';
+
+type ResolvedReservation = { type: 'reservation'; id?: string; reference?: string };
 
 const refPattern = /\b(RES-[A-Z0-9-]+)\b/i;
 const uuidPattern = /\b[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\b/i;
 
-export function resolveNaviEntity(query: string): { type: NaviEntityType; reference?: string } | null {
+export function resolveNaviEntity(query: string): ResolvedReservation | null {
   const reservation = query.match(refPattern)?.[1];
   if (reservation) return { type: 'reservation', reference: reservation.toUpperCase() };
   const id = query.match(uuidPattern)?.[0];
@@ -73,10 +75,10 @@ export async function buildNaviContext(agencyId: string, query: string): Promise
 
     if (facts.contract && typeof facts.contract === 'object' && 'id' in facts.contract) {
       const inspectionRows = await tx.select().from(inspections).where(and(eq(inspections.agencyId, agencyId), eq(inspections.contractId, (facts.contract as { id: string }).id))).limit(10);
-      facts.inspections = inspectionRows.map((i) => ({ id: i.id, kind: i.kind, status: i.status, createdAt: i.createdAt }));
+      facts.inspections = inspectionRows.map((i) => ({ id: i.id, kind: i.kind, createdAt: i.createdAt }));
       for (const i of inspectionRows) {
         relatedEntities.push({ type: 'inspection', id: i.id });
-        evidence.push({ source: 'locaOS.inspections', entityType: 'inspection', entityId: i.id, label: `${i.kind} inspection`, facts: { status: i.status, createdAt: i.createdAt } });
+        evidence.push({ source: 'locaOS.inspections', entityType: 'inspection', entityId: i.id, label: `${i.kind} inspection`, facts: { createdAt: i.createdAt } });
       }
     }
 
