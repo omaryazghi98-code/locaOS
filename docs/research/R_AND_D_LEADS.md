@@ -30,53 +30,19 @@ Do not adopt a project merely because it is popular or technically interesting. 
 
 ### Comp AI CRM (`trycompai/crm`) — ADAPT + REFERENCE
 
-Open-source, agentic-first CRM architecture with a persistent research agent, durable work queue, evidence-oriented tools/skills, and explicit data-boundary/sandbox patterns. The repository's release documentation describes an agent that runs independently of the browser, leases due work with database locking, and treats evidence and observed facts as distinct from model confidence. urlGitHub repositoryhttps://github.com/trycompai/crm
+Open-source, agentic-first CRM architecture with a persistent research agent, durable work queue, evidence-oriented tools/skills, and explicit data-boundary/sandbox patterns.
 
 **High-value patterns for locaOS/NAVI:**
 
-- **Evidence-first intelligence:** never let the model invent an operational fact; tools report observations/evidence and unresolved evidence becomes a suggestion for human settlement.
-- **Persistent agent work:** durable jobs, leases, retries, scheduled rechecks, and work that continues without an open browser.
-- **Versioned skills:** operational knowledge/policies can live as versioned, inspectable skill documents instead of one giant prompt.
-- **Authoritative internal context first:** read the system's own authoritative history before consulting external providers.
-- **Optional external capabilities:** external research/vendor integrations are additive; the agent remains useful when capabilities are unavailable.
-- **Sandbox/data boundaries:** agent shell/tooling should not automatically receive database credentials or unrestricted egress.
-- **Explainable rechecks:** scheduled future work should carry a reason that can be shown to the operator.
+- Evidence-first intelligence: never let the model invent an operational fact; tools report observations/evidence and unresolved evidence becomes a suggestion for human settlement.
+- Persistent agent work: durable jobs, leases, retries, scheduled rechecks, and work that continues without an open browser.
+- Versioned skills: operational knowledge/policies can live as versioned, inspectable skill documents instead of one giant prompt.
+- Authoritative internal context first: read the system's own authoritative history before consulting external providers.
+- Optional external capabilities: external research/vendor integrations are additive; the agent remains useful when capabilities are unavailable.
+- Sandbox/data boundaries: agent shell/tooling should not automatically receive database credentials or unrestricted egress.
+- Explainable rechecks: scheduled future work should carry a reason that can be shown to the operator.
 
-**Architectural mapping:**
-
-```text
-locaOS operational truth
-        ↓
-current state + immutable/auditable history
-        ↓
-NAVI durable task / work queue
-        ↓
-authoritative context retrieval
-        ↓
-external evidence only when justified/available
-        ↓
-evidence + provenance
-        ↓
-NAVI reasoning
-        ↓
-suggestion / prepared action
-        ↓
-human approval where required
-        ↓
-locaOS domain-authorized mutation
-```
-
-**Important boundary:**
-
-- Do **not** copy the CRM architecture wholesale.
-- Do **not** make NAVI the operational source of truth.
-- locaOS remains authoritative for tenancy, fleet, reservations, contracts, inspections, finance, permissions, and domain state transitions.
-- Do **not** copy its deliberate single-tenant model; locaOS requires structural tenant isolation.
-- Do **not** introduce its stack (Bun/Turborepo/Prisma/Vercel/eve) merely for similarity; extract the architectural patterns only where they fit our accepted architecture.
-
-**Decision:** ADAPT the evidence-first agent discipline, durable work-queue/recheck pattern, versioned-skill approach, and strict data-boundary ideas. REFERENCE the project for persistent-agent UX and implementation patterns. Consider selected pieces FUTURE as NAVI becomes an autonomous/long-running operational intelligence layer.
-
-**Research status:** studied; high-value architectural/product reference. No runtime dependency approved.
+**Decision:** ADAPT the evidence-first agent discipline, durable work-queue/recheck pattern, versioned-skill approach, and strict data-boundary ideas. REFERENCE the project for persistent-agent UX and implementation patterns. No runtime dependency approved.
 
 ---
 
@@ -93,46 +59,126 @@ Potential value for locaOS/NAVI:
 - Financial reports and cash-closing artifacts.
 - Identity-document integrity/provenance, without treating SEAL as identity verification.
 - NAVI evidence/explanation UX: **“Why does NAVI believe this?”**
-- Trust indicators that point to the underlying artifact, provenance, and verification state.
 
-Architectural mapping:
-
-```text
-locaOS operational truth
-        ↓
-immutable/auditable events + current state
-        ↓
-Evidence Artifact
-        ↓
-provenance + verification
-        ↓
-NAVI context/retrieval/reasoning
-        ↓
-evidence-backed explanation
-        ↓
-human approval where required
-```
-
-Important boundary:
-
-- Do **not** make Let's Seal the operational source of truth.
-- Do **not** assume blockchain is required for the locaOS design.
-- Keep locaOS authoritative for operational state, audit history, financial records, and permissions.
-- Treat SEAL as a reference/interoperability option for selected high-value artifacts, with possible future selective sealing.
-
-**Decision:** ADAPT the artifact-centric evidence/provenance philosophy; REFERENCE the SEAL standard for interoperability and independent verification. Consider FUTURE selective sealing of high-value external artifacts.
-
-**Research status:** studied; architecture/product pattern is high-value. Implementation is not approved yet.
+**Decision:** ADAPT the artifact-centric evidence/provenance philosophy; REFERENCE the SEAL standard for interoperability and independent verification. No blockchain dependency is implied or required.
 
 ---
 
-### Pieces — REFERENCE / NAVI philosophy
+### Pieces — ADAPT + REFERENCE / NAVI philosophy
 
-Persistent context, memory, local-first intelligence, and human/AI workspace patterns relevant to the NAVI layer. Use primarily as inspiration for NAVI UX and context architecture rather than as operational truth.
+Persistent context, memory, local-first intelligence, and human/AI workspace patterns relevant to the NAVI layer.
 
-**Decision:** REFERENCE. Preserve the NAVI boundary: locaOS remains authoritative and NAVI reasons over retrieved context.
+**Core loop to study:**
+
+`repository/context → persistent memory → AI assistance → proposed change/action → verification → recorded history`
+
+**High-value patterns:**
+
+- repository-local persistent context
+- context retrieval before reasoning
+- AI proposal → execution → verification → recorded history
+- local/private-first operation
+- import/export and degraded operation when external AI is unavailable
+- explicit loading, validation, success, and failure states
+
+**Boundary:** do not attempt to reproduce large-context infrastructure, IDE-wide polish/latency, enterprise policy/telemetry/support, or proprietary model-quality advantages. locaOS remains authoritative operational truth.
+
+**Decision:** ADAPT useful core-loop patterns; REFERENCE the product for NAVI UX/context architecture. No runtime dependency approved.
 
 ---
+
+### Greptile — ADAPT + REFERENCE + BENCHMARK
+
+**Reference:** self-hosted, single-repository AI pull-request reviewer design.
+
+**Core loop observed:**
+
+`repository → incremental index → structural chunks → embeddings/vector search → relevant context → AI reasoning → strict structured output → deterministic validation → dedupe → action → recorded findings`
+
+**High-value patterns for NAVI:**
+
+- **Incremental Git-aware indexing:** use file/blob identity to reprocess only changed content instead of rebuilding all context.
+- **Structural chunking:** prefer function/class-level chunks where language parsing supports it; use deterministic sliding-window fallback otherwise.
+- **Hybrid retrieval:** retrieve semantically related chunks and, when practical, include the complete current version of a small relevant file.
+- **Strict structured AI output:** require typed/validated results instead of free-form model output.
+- **Authoritative boundary validation:** reject model results that fall outside the relevant diff/context boundary.
+- **Persistent deduplication/history:** normalize and hash findings so repeated model output is not treated as new work across revisions.
+- **Local dry-run:** allow prompt/model tuning without external mutation.
+- **Explicit scope limits:** a small self-hosted approximation does not claim large-context infrastructure, multi-repo scale, proprietary data, or model quality.
+
+**NAVI mapping:** informs repository/context intelligence and the broader NAVI loop of retrieval → reasoning → structured proposal → deterministic validation → human/domain-authorized action → memory.
+
+**Important boundary:** do **not** copy the Python/FastAPI/SQLite stack into locaOS. NAVI must use the existing locaOS architecture and preserve the rule that NAVI is not operational source of truth.
+
+**Decision:** ADAPT the incremental indexing, structural chunking, hybrid retrieval, validation, deduplication, and dry-run patterns. REFERENCE/benchmark Greptile's workflow. No Greptile runtime dependency approved.
+
+---
+
+### Augment Code — REFERENCE + BENCHMARK
+
+**Research angle:** large-repository context assembly, repository-aware AI coding, and context selection.
+
+**NAVI mapping:** study how high-quality context is assembled and reduced before model reasoning. Do not assume proprietary infrastructure is reproducible in our stack.
+
+---
+
+### Qodo — REFERENCE + BENCHMARK
+
+**Research angle:** AI-assisted code review, testing, verification, and repository reasoning.
+
+**NAVI mapping:** informs the verification/finish-gate side of agent workflows and the principle that model output should be validated before it is trusted.
+
+---
+
+### AnythingLLM — ADAPT + REFERENCE
+
+**Research angle:** local/self-hosted knowledge workspaces, document ingestion, retrieval, persistent context, and model abstraction.
+
+**NAVI mapping:** study workspace/context-source organization and degraded local operation. Do not introduce a second operational database or knowledge system as authoritative state.
+
+---
+
+### Activepieces — ADAPT + REFERENCE
+
+**Research angle:** workflow orchestration, connectors, durable execution, retries, execution history, and controlled automation.
+
+**NAVI mapping:** useful reference for turning an operator request into a multi-step workflow while keeping domain authorization inside locaOS.
+
+---
+
+### Goose — REFERENCE
+
+**Research angle:** open agent/tool execution architecture and permission boundaries.
+
+**NAVI mapping:** study agent execution patterns; no need to add another coding agent alongside OpenCode unless a concrete gap is demonstrated.
+
+---
+
+### Cline — REFERENCE
+
+**Research angle:** human ↔ agent ↔ tool ↔ repository interaction and approval-driven coding workflows.
+
+**NAVI mapping:** useful reference for transparent action proposals and human confirmation.
+
+---
+
+### Aider — REFERENCE
+
+**Research angle:** repository-aware editing, change workflows, and Git-oriented developer interaction.
+
+**NAVI mapping:** reference for proposed changes and traceable modification workflows.
+
+---
+
+### Kilo Code — REFERENCE
+
+**Research angle:** repository-aware coding agents across development environments.
+
+**NAVI mapping:** study context/tool execution UX without adding another runtime agent by default.
+
+---
+
+## Evidence / provenance / memory
 
 ### Graphiti — FUTURE / ADAPT candidate
 
@@ -140,15 +186,11 @@ Temporal knowledge-graph patterns for representing changing entities, relationsh
 
 **Decision:** study/adapt selectively; do not make a graph database operational truth.
 
----
-
 ### QMD — FUTURE / EMBED candidate
 
 Local retrieval/search patterns relevant to NAVI knowledge retrieval and project context.
 
 **Decision:** benchmark against the existing retrieval architecture before adoption.
-
----
 
 ### Mem0 — BENCHMARK / FUTURE
 
@@ -156,15 +198,11 @@ Memory-management patterns for persistent AI context.
 
 **Decision:** benchmark against the intended NAVI memory model; do not outsource operational truth or authorization to a memory product.
 
----
-
 ### OpenHuman — REFERENCE / FUTURE
 
 Persistent local AI memory and agent-context research relevant to NAVI's long-lived context model.
 
-**Decision:** REFERENCE/FUTURE; extract useful memory patterns without importing unnecessary runtime complexity.
-
----
+**Decision:** extract useful memory patterns without importing unnecessary runtime complexity.
 
 ### Maka — REFERENCE / ADAPT
 
@@ -172,85 +210,21 @@ Agent auditability, permissions, and controlled action patterns relevant to NAVI
 
 **Decision:** ADAPT useful permission/audit patterns; domain authority stays in locaOS.
 
----
-
 ### browser-use — FUTURE / BENCHMARK
 
 Browser automation patterns for future controlled external workflows.
 
-**Decision:** research security, isolation, permissions, and confirmation boundaries before any production use.
+**Decision:** research security, isolation, permissions, and confirmation boundaries before production use.
 
 ---
 
-### Pipecat — BENCHMARK / FUTURE
+## CRM / operational workspace
 
-Multimodal/voice agent infrastructure potentially relevant to future NAVI interaction surfaces.
+### Midday — ADAPT + REFERENCE + BENCHMARK
 
-**Decision:** benchmark when voice/multimodal workflows become a concrete product requirement.
+**Research angle:** document → transaction matching, financial/document intelligence, assistant UX, background workers, operational inboxes, search/retrieval, and unified document + operational workspace patterns.
 
----
-
-### PaddleOCR / document intelligence — BUILD / EMBED
-
-OCR and document-understanding infrastructure for rental contracts, identity documents, inspections, and operational paperwork.
-
-**Current direction:** PaddleOCR worker/provider already exists in the project; maintain it behind explicit provider boundaries.
-
----
-
-### Traccar — REFERENCE / EMBED candidate
-
-Vehicle telematics and fleet tracking patterns.
-
-**Decision:** use as a reference and potential adapter target where verified provider/device contracts justify it; telemetry remains evidence, not automatic judgment.
-
----
-
-### MapLibre — REFERENCE / EMBED candidate
-
-Map rendering and geospatial UI foundation for fleet/operations views.
-
-**Decision:** evaluate as a standards-friendly map layer where geospatial UX becomes necessary.
-
----
-
-### OSRM — REFERENCE / EMBED candidate
-
-Routing infrastructure relevant to ETA, pickup/return logistics, and operations planning.
-
-**Decision:** benchmark against alternatives when routing becomes a concrete requirement.
-
----
-
-### DocuSeal — REFERENCE / EMBED candidate
-
-Document signing and workflow patterns relevant to contracts and execution.
-
-**Decision:** evaluate alongside existing signature infrastructure; do not duplicate capabilities without a concrete product gap.
-
----
-
-### CMI Node — FUTURE / EMBED candidate
-
-Potential Morocco-specific payment integration direction.
-
-**Decision:** only adopt behind a provider adapter after real API/contract/credential verification.
-
----
-
-### ERPNext — REFERENCE / BENCHMARK
-
-Broad operational/ERP patterns useful for benchmarking accounting, inventory, workflow, and reporting coverage.
-
-**Decision:** reference/benchmark; do not import ERP scope into the focused rental OS unless a concrete need emerges.
-
----
-
-### Dolibarr — REFERENCE / BENCHMARK
-
-Morocco-relevant small-business ERP/CRM patterns useful for feature-gap and workflow benchmarking.
-
-**Decision:** benchmark/reference, not a platform dependency.
+**NAVI mapping:** useful reference for finance/document intelligence and explainable operational context; do not wholesale-adopt its stack.
 
 ---
 
@@ -260,81 +234,73 @@ Car-rental-specific product/workflow reference for reservation, fleet, and renta
 
 **Decision:** benchmark UX/domain coverage and identify gaps/differentiators; do not copy its architecture blindly.
 
----
-
 ### Fleetbase — REFERENCE / BENCHMARK + ADAPT
 
-Fleetbase is a mature open-source **Logistics and Supply Chain Operating System (LSOS)** with a modular platform model. It is useful not because Navios should become a generic logistics product, but because Fleetbase demonstrates how a domain platform can separate a shared operational core from independently packaged capabilities and expose extensibility without continually rewriting the host application. The repository is actively maintained and is licensed AGPL-3.0. urlFleetbase repositoryhttps://github.com/fleetbase/fleetbase
+Fleetbase is a mature open-source Logistics and Supply Chain Operating System. It is useful as a platform-architecture reference for separating an operational core from independently packaged capabilities and extensibility.
 
-**High-value patterns to study for Navios:**
+**High-value patterns:**
 
-- **OS + modules:** keep the rental operational kernel authoritative while allowing future capabilities such as telematics, document intelligence, e-signatures, payments, and service-network integrations to behave as bounded modules.
-- **Capability registry:** Fleetbase's Universe/extension model is a useful reference for a future Navios module registry that can register navigation, routes, dashboard widgets, settings, UI capabilities, and lifecycle integrations without coupling every feature to the core console.
-- **Frontend + backend extension boundaries:** future Navios modules should have explicit contracts rather than becoming scattered feature code throughout the core.
-- **Realtime operational layer:** benchmark Fleetbase's realtime approach for a future event-driven NAVI experience where operational changes propagate into attention, tasks, fleet state, and command-center context without waiting for polling.
-- **Platform economics:** the extension ecosystem is a useful benchmark for the long-term Navios model of core SaaS + paid modules/integrations + eventually a service network.
-- **Operational network potential:** Fleetbase reinforces the broader platform idea that operational work can extend beyond the immediate company boundary into connected providers and transactions.
+- OS + modules: keep the rental operational kernel authoritative while allowing future capabilities such as telematics, document intelligence, e-signatures, payments, and service-network integrations to behave as bounded modules.
+- Capability registry: study extension/registry models for a future Navios module registry.
+- Frontend + backend extension boundaries: future modules should have explicit contracts rather than scattered feature code.
+- Realtime operational layer: benchmark realtime/event-driven propagation for future NAVI attention, tasks, fleet state, and command-center context.
+- Platform economics: benchmark core SaaS + paid modules/integrations as a possible long-term model.
 
-**Architectural mapping:**
+**Important boundary:** do not copy Fleetbase's framework/runtime architecture or turn Navios into generic freight/logistics software. The rental lifecycle remains authoritative and differentiating.
 
-```text
-                    NAVI
-             intelligence layer
-                     ↓
-        context / tools / events
-                     ↓
-┌──────────────────────────────────────────┐
-│              NAVIOS CORE                 │
-│ authoritative rental operational model   │
-│                                          │
-│ vehicles · reservations · contracts      │
-│ customers · inspections · operations     │
-│ finance · documents · permissions        │
-└───────────────────┬──────────────────────┘
-                    ↓
-             capability layer
-                    ↓
-     ┌────────┬──────┼───────┬────────┐
-     ▼        ▼      ▼       ▼        ▼
- telematics  OCR   e-sign  payments  network
-```
-
-**Important boundary:**
-
-- Do **not** copy Fleetbase's Ember/Laravel/extension architecture wholesale.
-- Do **not** turn Navios into a generic freight/logistics platform.
-- Do **not** create a marketplace or extension marketplace prematurely.
-- Do **not** replace the existing locaOS domain model or authoritative state machine.
-- The rental lifecycle remains the differentiator: reservation → contract → pickup → return → inspection → operational work → QA → availability.
-- Any future module must respect tenancy, permissions, domain authority, auditability, and provider-adapter boundaries.
-
-**Decision:** **ADAPT** the modular-OS/capability-registry philosophy and benchmark realtime/event-driven extension patterns. **REFERENCE** Fleetbase's platform and ecosystem model. Do not adopt its framework or runtime architecture.
-
-**Research status:** studied; high-value long-term platform architecture reference. No Fleetbase runtime dependency approved.
+**Decision:** ADAPT the modular-OS/capability-registry philosophy and benchmark realtime/event-driven extension patterns. REFERENCE Fleetbase's platform model. No Fleetbase runtime dependency approved.
 
 ---
 
-## Agent / development workflow research
+## Infrastructure / document / operations research
 
-### Agency Agents — BUILD / INTERNAL TOOLING
+### PaddleOCR / document intelligence — BUILD / EMBED
 
-Curated role prompts for architecture, product strategy, UX, implementation, and finish/review work.
+OCR and document-understanding infrastructure for rental contracts, identity documents, inspections, and operational paperwork. Current project direction already has a PaddleOCR worker/provider behind explicit provider boundaries.
 
-**Decision:** use a small internal council rather than the full catalog. Current intended roster:
+### Traccar — REFERENCE / EMBED candidate
 
-1. Product Strategist
-2. Evidence & UX Researcher
-3. UI Designer
-4. Software Architect
-5. UI Finish-Gate Reviewer
+Vehicle telematics and fleet tracking patterns. Telemetry remains evidence, not automatic judgment.
 
-This is development-process tooling, not the NAVI runtime.
+### MapLibre — REFERENCE / EMBED candidate
+
+Map rendering and geospatial UI foundation for fleet/operations views.
+
+### OSRM — REFERENCE / EMBED candidate
+
+Routing infrastructure relevant to ETA, pickup/return logistics, and operations planning.
+
+### DocuSeal — REFERENCE / EMBED candidate
+
+Document signing and workflow patterns relevant to contracts and execution.
+
+### CMI Node — FUTURE / EMBED candidate
+
+Potential Morocco-specific payment integration direction; only adopt behind a provider adapter after real API/contract/credential verification.
+
+### ERPNext — REFERENCE / BENCHMARK
+
+Broad operational/ERP patterns useful for benchmarking accounting, inventory, workflow, and reporting coverage. Do not import ERP scope into the focused rental OS without a concrete need.
+
+### Dolibarr — REFERENCE / BENCHMARK
+
+Small-business ERP/CRM patterns useful for feature-gap and workflow benchmarking. Benchmark/reference, not a platform dependency.
+
+### Pipecat — BENCHMARK / FUTURE
+
+Multimodal/voice agent infrastructure potentially relevant to future NAVI interaction surfaces.
 
 ### OmniRoute — FUTURE / BUILD candidate
 
-Potential model-routing/orchestration leverage to manage heterogeneous AI models and control cost/availability.
+Potential model-routing/orchestration leverage to manage heterogeneous AI models and control cost/availability. Research before adding infrastructure.
 
-**Decision:** research before adding infrastructure; no new runtime dependency solely for experimentation.
+### Unlimited-OCR — BENCHMARK / FUTURE
+
+OCR benchmarking/reference candidate to compare against the current PaddleOCR direction.
+
+### Archify — REFERENCE / BENCHMARK
+
+Architecture visualization/documentation patterns for making system structure easier to inspect and communicate.
 
 ### Balsa UI — REFERENCE
 
@@ -344,22 +310,36 @@ UI/component and interaction inspiration where it materially improves operator w
 
 Component-system patterns useful for the web console. Adapt to locaOS accessibility, density, and operator needs rather than copying marketing-oriented defaults.
 
-### Archify — REFERENCE / BENCHMARK
+---
 
-Architecture visualization/documentation patterns for making system structure easier to inspect and communicate.
+## Agent / development workflow research
 
-### Unlimited-OCR — BENCHMARK / FUTURE
+### Agency Agents — BUILD / INTERNAL TOOLING
 
-OCR benchmarking/reference candidate to compare against the current PaddleOCR direction.
+Curated role prompts for architecture, product strategy, UX, implementation, and finish/review work.
+
+**Current intended roster:**
+
+1. Product Strategist
+2. Evidence & UX Researcher
+3. UI Designer
+4. Software Architect
+5. UI Finish-Gate Reviewer
+
+This is development-process tooling, not the NAVI runtime.
 
 ---
 
-## Product/UX research principles carried across leads
+## Decision rule
 
-- Operational density and accessibility take priority over decorative interaction.
-- High-impact actions require explicit human confirmation where appropriate.
-- Evidence must be traceable to artifacts and authoritative records.
-- AI explanations should distinguish facts, evidence, inference, and recommendation.
-- External providers must sit behind honest adapters and verified contracts.
-- No AI framework, vector database, graph database, browser agent, OCR engine, or SaaS becomes operational truth.
-- Avoid microservices or infrastructure expansion merely to match aspirational architecture documents.
+A project being listed here **does not mean we install it**. The preferred outcome is often to extract a small architectural pattern and implement it natively inside locaOS/NAVI.
+
+Preserve these invariants:
+
+1. **locaOS is operational source of truth.**
+2. **NAVI retrieves, reasons, recommends, prepares, and orchestrates; it does not bypass domain authority.**
+3. AI output is structured and deterministically validated where possible.
+4. High-impact identity, financial, contract, and compliance operations require human confirmation.
+5. Tenant isolation and server-side authorization remain mandatory.
+6. External providers are adapters, not domain truth.
+7. Event-sourcing-lite remains the intended history architecture: PostgreSQL current state + immutable/auditable domain events → NAVI context projection → possible future temporal knowledge graph.
